@@ -434,3 +434,58 @@ class papiFunctions:
         # update template to include origin and cpCode behaviors in default rule if they don't exist
         default_behaviors = templateData['rules']['behaviors']
         onboard_object.level_0_rules = templateData['rules']['children']
+
+    def custom_property_version(self, config, onboard_object, wrapper_object, utility_object):
+        property_json = wrapper_object.get_property_version_ruletree(onboard_object.property_id,
+                                                                onboard_object.contract_id,
+                                                                onboard_object.group_id,
+                                                                onboard_object.property_version_base)
+        if property_json:
+            matching_rules = utility_object.search_for_json_rule_by_name(property_json['rules'], 'name', onboard_object.property_rule_name)
+            if matching_rules:
+                if len(matching_rules) > 1:
+                    logger.info('Warning! More than one rule name matching the input rule name. Using first matching rule')
+                onboard_object.ruletree_rules_loc = matching_rules[0]
+                return (property_json, True)
+            else:
+                sys.exit(logger.error(f'{onboard_object.property_rule_name} is not found in the property'))
+        else:
+            sys.exit(logger.error(f'{onboard_object.property_rule_name} unable to retrieve property version {onboard_object.property_version_base}'))
+
+    def update_custom_property(self, config, onboard_object, wrapper_object, utility_object, updated_property_rule_tree, ruleFormat):
+        """
+        Function with multiple goals:
+            1. Create new property version
+            2. Update the property with template rules define
+        """
+
+        # set property name and hostnames the dict key value
+
+        create_property_response = wrapper_object.create_new_property_version(onboard_object.property_id,
+                                                                onboard_object.contract_id,
+                                                                onboard_object.group_id,
+                                                                onboard_object.property_version_base
+                                                                )
+        if create_property_response.status_code == 201:
+            onboard_object.updated_property_version = create_property_response.json()['versionLink'].split('?')[0].split('/')[-1]
+
+            logger.info(f"Created new property version: '{onboard_object.updated_property_version}'")
+        else:
+            logger.error('Unable to create property version')
+            sys.exit(logger.error(json.dumps(create_property_response.json(), indent=4)))
+
+        # Update Property Rules
+        updateRulesResponse = wrapper_object.updatePropertyRules(onboard_object.contract_id,
+                                                                onboard_object.group_id,
+                                                                onboard_object.property_id,
+                                                                ruleFormat,
+                                                                ruletree=json.dumps({'rules': updated_property_rule_tree}),
+                                                                version=onboard_object.updated_property_version)
+
+        if updateRulesResponse.status_code == 200:
+            logger.info('Updated property with rules')
+            print()
+            return (True)
+        else:
+            logger.error('Unable to update rules for property')
+            sys.exit(logger.error(json.dumps(updateRulesResponse.json(), indent=4)))

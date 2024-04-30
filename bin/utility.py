@@ -696,6 +696,78 @@ class utility:
 
         return self.valid
 
+    def validateCustomSteps(self, onboard_object, wrapper_object, cli_mode='custom') -> bool:
+        """
+        Function to validate the input values of env json and to populat onboard variables
+        """
+        count = 0
+        valid_env = True
+        print()
+        logger.warning('Validating environment file information. Please wait, may take a few moments')
+
+        if onboard_object.build_env not in onboard_object.env_details.keys():
+            sys.exit(logger.error(f'{onboard_object.build_env} is not in environments.json environments'))
+        else:
+            logger.info(f'{onboard_object.build_env}{space:>{column_width - len(onboard_object.build_env)}}environment')
+
+        if 'property_name' not in onboard_object.env_details[onboard_object.build_env].keys():
+            logger.error(f'property_name{space:>{column_width - len("property_name")}}property name not found in environment file')
+            count += 1
+        else:
+            onboard_object.property_name = onboard_object.env_details[onboard_object.build_env]['property_name']
+            # logger.info(f'{onboard_object.property_name}{space:>{column_width - len(onboard_object.property_name)}}input property name found')
+            if not wrapper_object.property_exists(onboard_object.property_name):
+                logger.error(f'{onboard_object.property_name}{space:>{column_width - len(onboard_object.property_name)}}property name on env file does not exist')
+                count += 1
+            else:
+                logger.info(f'{onboard_object.property_name}{space:>{column_width - len(onboard_object.property_name)}}property name')
+                onboard_object.property_details = wrapper_object.get_property_id(onboard_object.property_name)
+                if onboard_object.property_details:
+                    onboard_object.property_id = onboard_object.property_details[0]['propertyId']
+                    onboard_object.group_id = onboard_object.property_details[0]['groupId']
+                    onboard_object.contract_id = onboard_object.property_details[0]['contractId']
+                    production_version = list(filter(lambda x: x['productionStatus'] == 'ACTIVE', onboard_object.property_details))
+                    if production_version:
+                        onboard_object.property_production_version = production_version[0]['propertyVersion']
+                    else:
+                        onboard_object.property_production_version = None
+                    onboard_object.property_latest_version = max(list(map(lambda x: x['propertyVersion'], onboard_object.property_details)))
+                    logger.info(f'{onboard_object.property_id}{space:>{column_width - len(f"{onboard_object.property_id}")}}property id')
+                    logger.info(f'{onboard_object.group_id}{space:>{column_width - len(f"{onboard_object.group_id}")}}group id')
+                    logger.info(f'{onboard_object.contract_id}{space:>{column_width - len(f"{onboard_object.contract_id}")}}contract id')
+                    logger.info(f'{onboard_object.property_production_version}{space:>{column_width - len(f"{onboard_object.property_production_version}")}}production version')
+                    logger.info(f'{onboard_object.property_latest_version}{space:>{column_width - len(f"{onboard_object.property_latest_version}")}}latest version')
+                    if onboard_object.property_version == 'prod':
+                        onboard_object.property_version_base = onboard_object.property_production_version
+                    elif onboard_object.property_version == 'latest':
+                        onboard_object.property_version_base = onboard_object.property_latest_version
+                        logger.info(f'{onboard_object.property_version}{space:>{column_width - len(f"{onboard_object.property_version}")}}building from')
+                    else:
+                        try:
+                            onboard_object.property_version_base = int(onboard_object.property_version)
+                        except:
+                            logger.error(f'{onboard_object.property_version_base}{space:>{column_width - len(onboard_object.property_version_base)}}property version invalid..must be integer')
+                            count += 1
+                else:
+                    logger.error(f'{space:>{column_width - 0}}unable to get property details')
+
+            if 'property_rule_name' not in onboard_object.env_details[onboard_object.build_env].keys():
+                logger.error(f'property_rule_name{space:>{column_width - len("property_rule_name")}}not found in environment file')
+                count += 1
+            else:
+                onboard_object.property_rule_name = onboard_object.env_details[onboard_object.build_env]['property_rule_name']
+                logger.info(f'{onboard_object.property_rule_name}{space:>{column_width - len(onboard_object.property_rule_name)}}property rule name to inject into')
+                print()
+
+        if count == 0:
+            self.valid is True
+            print()
+            logger.warning('Inputs Valid')
+        else:
+            sys.exit(logger.error(f'Total {count} errors, please review'))
+
+        return self.valid
+
     def validateFile(self, source: str, file_location: str) -> bool:
         logger.debug(f'{file_location} {type(file_location)} {os.path.exists(file_location)}')
         logger.debug(os.path.abspath(file_location))
@@ -1237,6 +1309,18 @@ class utility:
 
         return (propertyJson, hostnameList)
 
+    def csv_2_path_array(self, onboard_object) -> dict:
+        path_dict = []
+        with open(onboard_object.csv_loc, encoding='utf-8-sig', newline='') as f:
+            for i, row in enumerate(csv.DictReader(f), 1):
+                path = row['path']
+                pattern = r'/([^/-]+)-'
+                match = re.search(pattern, path)
+                value_before_hyphen = match.group(1) if match else None
+                path_dict.append({'path_match': row['path'], 'rulename': value_before_hyphen})
+
+        onboard_object.path_dict = path_dict
+
     def validate_group_id(self, onboard, groups) -> None:
         for group in groups:
             if group['contractIds'][0] == onboard.contract_id:
@@ -1568,3 +1652,133 @@ class utility:
             sys.exit(logger.error(f'Total {count} errors, please review'))
 
         return show_df
+
+    def env_validator(self, onboard_object):
+        with open(onboard_object.env_loc) as f:
+            onboard_object.env_details = json.load(f)
+
+    def search_for_json_rule_by_name(self, data, target_key, target_value, path='', paths=None):
+        if paths is None:
+            paths = []
+
+        if isinstance(data, dict):
+            for key, value in data.items():
+                new_path = f'{path}.{key}' if path else key
+                if key == target_key and value == target_value:
+                    paths.append(new_path)
+                if isinstance(value, (dict, list)):
+                    self.search_for_json_rule_by_name(
+                        value, target_key, target_value, new_path, paths
+                    )
+        elif isinstance(data, list):
+            for index, item in enumerate(data):
+                new_path = f'{path}[{index}]'
+                self.search_for_json_rule_by_name(item, target_key, target_value, new_path, paths)
+
+        return paths
+
+    def create_new_rule_json(self, onboard_object, ruletree, cpcodeList):
+
+        loc = onboard_object.ruletree_rules_loc.replace('.name', '')
+        full_ruleset = self.get_full_behavior_by_jsonpath(ruletree, loc)
+
+        for rule in onboard_object.path_dict:
+            json_to_add = self.generate_custom_rule_json(cpcodeList[rule['rulename']], rule['path_match'], rule['rulename'])
+            full_ruleset['children'].append(json_to_add)
+
+        full_ruleset = sorted(full_ruleset['children'], key=lambda x: x['name'])
+
+        parts = re.split(r'\.|\[|\]', f'{loc}.children')
+        # Filter out empty strings from results
+        parts = [part for part in parts if part]
+
+        current = ruletree
+        for i, part in enumerate(parts):
+            if part.isdigit():  # This is a list index
+                part = int(part)  # Convert index to integer
+                if i == len(parts) - 1:
+                    current[part] = full_ruleset  # Set value at index
+                else:
+                    current = current[part]  # Navigate to the next level
+            else:  # This is a dictionary key
+                if i == len(parts) - 1:
+                    current[part] = full_ruleset  # Set new value at the key
+                else:
+                    current = current.get(part, {})  # Navigate to the next level, creating new dict if necessary
+
+        return (ruletree)
+
+    def get_full_behavior_by_jsonpath(self, json_object, json_path):
+        """
+        Extracts a value from a nested JSON object using a simplified JSONPath expression.
+
+        Parameters:
+        json_object (dict): The JSON object to be queried.
+        json_path (str): The simplified JSONPath expression to locate the desired data.
+
+        Returns:
+        The value from the JSON object located at the specified path.
+        If the path does not exist, None is returned.
+        """
+        elements = json_path.split('.')
+        current_element = json_object
+
+        for elem in elements:
+            if '[' in elem and ']' in elem:
+                key, index = elem.split('[')
+                index = int(index[:-1])  # Remove ']' and convert to int
+                try:
+                    if key == '':
+                        current_element = current_element[index]
+                    else:
+                        current_element = current_element[key][index]
+                except (IndexError, KeyError, TypeError):
+                    return None
+            else:
+                try:
+                    current_element = current_element[elem]
+                except KeyError:
+                    return None
+
+        return current_element
+
+    def generate_custom_rule_json(self, cpcode, path, rulename):
+
+        return ({
+            'name': rulename.upper(),
+            'children': [],
+            'behaviors': [
+                {
+                    'name': 'cpCode',
+                    'options': {
+                        'value': {
+                            'id': cpcode
+                        }
+                    }
+                },
+                {
+                    'name': 'setVariable',
+                    'options': {
+                        'variableName': 'PMUSER_CURATED_PROP',
+                        'valueSource': 'EXPRESSION',
+                        'transform': 'NONE',
+                        'variableValue': '1'
+                    }
+                }
+            ],
+            'criteria': [
+                {
+                    'name': 'path',
+                    'options': {
+                        'matchOperator': 'MATCHES_ONE_OF',
+                        'values': [
+                            path
+                        ],
+                        'matchCaseSensitive': True,
+                        'normalize': False
+                    }
+                }
+            ],
+            'criteriaMustSatisfy': 'any',
+            'comments': f'RARE-JIRA: Add Curated property {rulename.upper()}'
+        })

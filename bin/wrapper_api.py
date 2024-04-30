@@ -73,6 +73,8 @@ class apiCallsWrapper:
         if resp.status_code == 200:
             if len(resp.json()['versions']['items']) > 0:
                 return resp.json()['versions']['items']
+        else:
+            return False
 
     def list_property_hostname(self, property_id: str, contract_id: str, group_id: str):
         url = f'https://{self.access_hostname}/papi/v1/properties/{property_id}/hostnames'
@@ -141,7 +143,7 @@ class apiCallsWrapper:
         return create_property_response
 
     def updatePropertyRules(self, contractId, groupId,
-                            propertyId, ruleFormat, ruletree):
+                            propertyId, ruleFormat, ruletree, version=1):
         """
         Function to update property rules
         """
@@ -150,7 +152,7 @@ class apiCallsWrapper:
             version_string = f'application/vnd.akamai.papirules.{ruleFormat}json'
             headers['Content-Type'] = version_string
         update_property_url = 'https://' + self.access_hostname + '/papi/v1/properties/' + \
-                              propertyId + '/versions/1/rules?contractId=' + \
+                              propertyId + f'/versions/{version}/rules?contractId=' + \
                               contractId + '&groupId=' + groupId + '&validateRules=false'
         update_property_url = self.formUrl(update_property_url)
         update_property_response = self.session.put(update_property_url, data=ruletree, headers=headers)
@@ -697,3 +699,27 @@ class apiCallsWrapper:
             hostnames = new_df['cnameFrom'].unique().tolist()
             logger.debug(hostnames)
         return hostnames
+
+    def get_property_version_ruletree(self, property_id: str, contract_id: str, group_id: str, version: int):
+        url = self.formUrl(f'https://{self.access_hostname}/papi/v1/properties/{property_id}/versions/{version}/rules?contractId={contract_id}&groupId={group_id}')
+        resp = self.session.get(url, headers=headers)
+        if resp.status_code == 200:
+            ruletree = resp.json()
+        else:
+            ruletree = False
+
+        return ruletree
+
+    def create_new_property_version(self, property_id, contract_id, group_id, version):
+        """
+        Function to create property
+        """
+        newPropertyData = {}
+        newPropertyData['createFromVersion'] = f'{version}'
+
+        create_property_url = f'https://{self.access_hostname}/papi/v1/properties/{property_id}/versions?contractId={contract_id}&groupId={group_id}'
+        create_property_url = self.formUrl(create_property_url)
+        create_property_response = self.session.post(create_property_url,
+                                                data=json.dumps(newPropertyData),
+                                                headers=headers)
+        return create_property_response

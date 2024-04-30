@@ -29,6 +29,7 @@ import click
 import onboard
 import onboard_appsec_update
 import onboard_batch_create
+import onboard_custom
 import onboard_multi_hosts
 import onboard_single_host
 import pandas as pd
@@ -980,23 +981,27 @@ def appsec_create(config, contract_id, group_id, by, activate, csv, email):
         util.log_cli_timing()
 
 
-@cli.command(short_help='Create a 1 or more delivery configurations using a csv input and optionally update WAF policy')
+@cli.command(short_help='Custom solution')
 @click.option('--waf-config', metavar='', help='name of security configuration to update', required=False)
 @click.option('--waf-match-target', metavar='', help='waf match target id to add hostnames to (use numeric waf match target id)', required=False)
 @click.option('--activate', metavar='', type=click.Choice(['delivery-staging', 'waf-staging', 'delivery-production', 'waf-production']), multiple=True, help='Options: delivery-staging, delivery-production, waf-staging, waf-production', required=False)
 @click.option('--email', metavar='', multiple=True, help='email(s) for activation notifications', required=False)
 @click.option('--csv', metavar='', required=True, help='csv file with headers path,origin,propertyName,forwardHostHeader,edgeHostname')
+@click.option('--env', metavar='', required=False, help='environment file')
+@click.option('--build-env', metavar='', required=False, help='environment to build')
+@click.option('--property-version', metavar='', required=False, help='property version to build from', default='prod')
+@click.option('--use-cpcode', metavar='', help='override creating new cpcode for each new path', required=False)
 @pass_config
 def custom(config, **kwargs):
     """
-    Create a 1 or more delivery configurations using a csv input and optionally update WAF policy
+    Update delivery config + cloudlet policy + waf
     """
     logger.info('Start Akamai CLI onboard')
     _, wrapper_object = init_config(config)
     click_args = kwargs
     start_time = time.perf_counter()
 
-    onboard_object = onboard_batch_create.onboard(config, click_args)
+    onboard_object = onboard_custom.onboard(config, click_args)
 
     # Validate setup and akamai cli and cli pipeline are installed
     csv = click_args['csv']
@@ -1012,134 +1017,37 @@ def custom(config, **kwargs):
     utility_papi_object = utility_papi.papiFunctions()
     utility_waf_object = utility_waf.wafFunctions()
 
-    # Determine necessary execution steps
-    steps_object = steps.executionSteps()
-
     # validate setup steps when csv input provided
-    utility_object.csv_validator(onboard_object, csv)
-    utility_object.csv_2_property_dict(onboard_object)
-    utility_object.validateSetupStepsCSV(onboard_object, wrapper_object, cli_mode='batch-create')
+    utility_object.env_validator(onboard_object)
+    utility_object.csv_2_path_array(onboard_object)
+    utility_object.validateCustomSteps(onboard_object, wrapper_object)
 
     # Got this far, we are ready to try and execute the actual steps
     if utility_object.valid is True:
 
-        # create new cpcode for each hostname
+        property_rule_tree, rule_exists = utility_papi_object.custom_property_version(config, onboard_object, wrapper_object, utility_object)
+
+        # create new cpcode for each path
         cpcodeList = {}
-        for hostname in onboard_object.public_hostnames:
+        for path in onboard_object.path_dict:
             if not click_args['use_cpcode']:
+                new_cpcode_name = f'www.test.com.curated.{path["rulename"]}'
+                # check if cpcode already exists
                 cpcode = utility_papi_object.create_new_cpcode(onboard_object,
                                                             wrapper_object,
-                                                            hostname,
+                                                            new_cpcode_name,
                                                             onboard_object.contract_id,
                                                             onboard_object.group_id,
                                                             onboard_object.product_id)
             else:
                 cpcode = int(click_args['use_cpcode'])
-            cpcodeList[hostname] = cpcode
-        # build dictonary of json rule trees based on hostnames/property names from csv input
-        propertyJson, hostnameList = utility_object.csv_2_property_array(config, onboard_object, cpcodeList)
-        onboard_object.public_hostnames = hostnameList
+            cpcodeList[path['rulename']] = cpcode
+
+        # build dictonary of json rules based on paths from csv input
+        onboard_object.updated_property_rule_tree = utility_object.create_new_rule_json(onboard_object, property_rule_tree['rules'], cpcodeList)
 
         # create new properties based on json rule tree dictionary
-        propertyIdDict = utility_papi_object.batch_create_update_pm(config, onboard_object, wrapper_object, utility_object, propertyJson, cpcodeList)
-
-        # activate to staging if required
-        if onboard_object.activate_property_staging:
-            activation_status, success_hostnames, failed_activations, activationDict = utility_papi_object.batch_activate_and_poll(wrapper_object,
-                                                    propertyIdDict,
-                                                    onboard_object.contract_id,
-                                                    onboard_object.group_id,
-                                                    version=1,
-                                                    network='STAGING',
-                                                    emailList=onboard_object.notification_emails,
-                                                    notes='Onboard CLI Activation')
-            # check to see if any activations failed
-            if (len(failed_activations) > 0) or (activation_status is False):
-                logger.error('Unable to activate property to staging network')
-                for failedActivation in failed_activations:
-                    logger.error(f'Unable to activate {failedActivation["propertyName"]} to staging network')
-                    # get list of successfully activated properties
-                if len(success_hostnames) == 0:
-                    exit(-1)
-                else:
-                    logger.info('Proceeding with hostnames that were successfully activated')
-            # remove hostnames from failed activations from WAF eligible hostnames
-            onboard_object.public_hostnames = success_hostnames
-        else:
-            logger.info('Activate Property Staging: SKIPPING')
-
-        # Add WAF selected hosts
-        if onboard_object.add_selected_host:
-
-            # First have to create a new WAF config version
-            print()
-            logger.warning('Onboarding Security Config')
-            logger.debug(f'Trying to create new version for WAF configuration: {onboard_object.waf_config_name}')
-            create_waf_version = utility_waf_object.createWafVersion(wrapper_object, onboard_object, notes=onboard_object.version_notes)
-            wrapper_object.update_waf_config_version_note(onboard_object, notes=onboard_object.version_notes)
-            if create_waf_version is False:
-                sys.exit()
-
-            # Created WAF config version, now can add selected hosts to it
-            logger.debug(f'Trying to add property public_hostnames as selected hosts to WAF configuration: {onboard_object.waf_config_name}')
-            add_hostnames = utility_waf_object.addHostnames(wrapper_object,
-                                        onboard_object.public_hostnames,
-                                        onboard_object.onboard_waf_config_id,
-                                        onboard_object.onboard_waf_config_version)
-            if add_hostnames is True:
-                logger.info(f'Successfully added {onboard_object.public_hostnames} as selected hosts')
-            else:
-                logger.error('Unable to add selected hosts to WAF Configuration')
-                exit(-1)
-        else:
-            logger.info('WAF Add Selected Hosts: SKIPPING')
-
-        # Update WAF match target
-        if onboard_object.update_match_target:
-            modify_matchtarget = utility_waf_object.updateMatchTarget(wrapper_object,
-                                        onboard_object.public_hostnames,
-                                        onboard_object.onboard_waf_config_id,
-                                        onboard_object.onboard_waf_config_version,
-                                        onboard_object.waf_match_target_id)
-            if modify_matchtarget:
-                logger.info(f'Successfully added {onboard_object.public_hostnames} to WAF Configuration Match Target')
-            else:
-                sys.exit(logger.error('Unable to update match target in WAF Configuration'))
-
-        else:
-            logger.info('WAF Update Match Target: SKIPPING')
-
-        # Activate WAF configuration to staging
-        if onboard_object.activate_waf_policy_staging:
-            waf_activation_status = utility_waf_object.activateAndPoll(wrapper_object, onboard_object, network='STAGING')
-            if waf_activation_status is False:
-                sys.exit(logger.error('Unable to activate WAF configuration to staging network'))
-        else:
-            logger.info('Activate WAF Configuration Staging: SKIPPING')
-
-        # Activate property to production
-        if onboard_object.activate_property_production:
-            # get list of successful staging activations for production activation
-            success_staging_activations = (list(filter(lambda x: x['activationStatus']['STAGING'] in ['ACTIVE'], activationDict)))
-
-            activation_status, success_hostnames, failed_activations, activationDict = utility_papi_object.batch_activate_and_poll(wrapper_object,
-                                                        success_staging_activations,
-                                                        onboard_object.contract_id,
-                                                        onboard_object.group_id,
-                                                        version=1,
-                                                        network='PRODUCTION',
-                                                        emailList=onboard_object.notification_emails,
-                                                        notes='Onboard CLI Activation')
-        else:
-            logger.info('Activate Property Production: SKIPPING')
-
-        # Activate WAF configuration to production only after success delivery config in production
-        if onboard_object.activate_waf_policy_production and activation_status == 'ACTIVE':
-            waf_activation_status = utility_waf_object.activateAndPoll(wrapper_object, onboard_object, network='PRODUCTION')
-            if waf_activation_status is False:
-                sys.exit(logger.error('Unable to activate WAF configuration to production network'))
-        else:
-            logger.info('Activate WAF Configuration Production: SKIPPING')
+        update_property_success = utility_papi_object.update_custom_property(config, onboard_object, wrapper_object, utility_object, onboard_object.updated_property_rule_tree, property_rule_tree['ruleFormat'])
 
         print()
         end_time = time.perf_counter()
@@ -1151,6 +1059,7 @@ def custom(config, **kwargs):
         return 0
 
     return 0
+
 
 def get_prog_name():
     prog = os.path.basename(sys.argv[0])

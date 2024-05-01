@@ -548,7 +548,9 @@ By submitting a contribution (the “Contribution”) to this project, and for g
 - Minimum python 3.6 `git clone https://github.com/akamai/cli-onboard.git  `
 - cd into cli-onboard directory `cd cli-onboard`
 - Create python virtual environment `python3 -m venv .venv`
+- Activate python virtual environment `source .venv/bin/activate`
 - Install required packages `pip3 install -r requirements.txt`
+- Install pre-commit hook `pre-commit install`
 - If testing another branch i.e `shared-policy` run `git checkout -b shared-policy`
 - Verify as Akamai CLI, first uninstall existing version `akamai uninstall onboard`
 - Install from local repo

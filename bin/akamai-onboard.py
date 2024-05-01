@@ -32,7 +32,6 @@ import onboard_batch_create
 import onboard_custom
 import onboard_multi_hosts
 import onboard_single_host
-import pandas as pd
 import requests
 import steps
 import utility
@@ -50,7 +49,8 @@ from model.multi_hosts import MultiHosts
 from model.single_host import SingleHost
 from tabulate import tabulate
 
-PACKAGE_VERSION = '2.3.3'
+
+PACKAGE_VERSION = '2.4.0'
 logger = setup_logger()
 root = get_cli_root_directory()
 
@@ -127,12 +127,6 @@ def help(ctx):
     Show help information
     '''
     print(ctx.parent.get_help())
-
-
-@cli.command(short_help='Convert from another CDN vendor to Akamai CDN')
-@pass_config
-def convert(config, **kwargs):
-    pass
 
 
 @cli.command(short_help='Pull sample templates')

@@ -18,6 +18,7 @@ import logging
 import os
 import shutil
 import time
+from logging.config import dictConfig
 from pathlib import Path
 
 import coloredlogs
@@ -47,7 +48,7 @@ def setup_logger():
     with open(origin_config) as f:
         log_cfg = json.load(f)
 
-    # logging.config.dictConfig(log_cfg)
+    logging.config.dictConfig(log_cfg)
     logging.Formatter.converter = time.gmtime
     logger = logging.getLogger(__name__)
     coloredlogs.install(logger=logger, fmt='%(levelname)-7s: %(message)s')

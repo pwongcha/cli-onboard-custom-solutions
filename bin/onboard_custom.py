@@ -1,30 +1,11 @@
-"""
-Copyright 2019 Akamai Technologies, Inc. All Rights Reserved.
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
-    http://www.apache.org/licenses/LICENSE-2.0
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
-"""
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
-from exceptions import setup_logger
-logger = setup_logger()
 
-
-class onboard:
-    # Initialize the object
+class Onboard:
     def __init__(self, config, click_args):
-        # Read values from setup.json or --file
-        # Certain values (onboard_) are updated in main processing later
         try:
             self.property_name = []
             self.csv_loc = self.get_actual_location(click_args['csv'])
@@ -32,15 +13,15 @@ class onboard:
             self.build_env = click_args['build_env']
             self.valid_csv = True
             self.valid_env = True
-            self.path_dict = []
+            self.paths = []
+            self.product_id = click_args['product']
             self.property_version = click_args['property_version']
 
-            # self.rule_name = click_args['rule_name']
-            # Activation values
             if 'delivery-staging' in click_args['activate']:
                 self.activate_property_staging = True
             if 'waf-staging' in click_args['activate']:
                 self.activate_waf_policy_staging = True
+
             if 'delivery-production' in click_args['activate']:
                 self.activate_property_production = True
             if 'waf-production' in click_args['activate']:
@@ -50,6 +31,7 @@ class onboard:
                 self.notification_emails = click_args['email']
             else:
                 self.notification_emails = ['noreply@akamai.com']
+
             self.version_notes = 'Created using Onboard CLI'
 
             # Read config object that contains the command line parameters

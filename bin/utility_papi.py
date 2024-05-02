@@ -9,8 +9,11 @@ from pathlib import Path
 from time import gmtime
 from time import strftime
 
+import utility
 from exceptions import setup_logger
+from onboard_custom import Onboard
 from poll import pollActivation
+from wrapper_api import apiCallsWrapper
 
 logger = setup_logger()
 
@@ -435,57 +438,57 @@ class papiFunctions:
         default_behaviors = templateData['rules']['behaviors']
         onboard_object.level_0_rules = templateData['rules']['children']
 
-    def custom_property_version(self, config, onboard_object, wrapper_object, utility_object):
-        property_json = wrapper_object.get_property_version_ruletree(onboard_object.property_id,
-                                                                onboard_object.contract_id,
-                                                                onboard_object.group_id,
-                                                                onboard_object.property_version_base)
+    def custom_property_version(self, onboard: Onboard, papi: apiCallsWrapper, util: utility):
+        property_json = papi.get_property_version_ruletree(onboard.property_id,
+                                                           onboard.contract_id,
+                                                           onboard.group_id,
+                                                           onboard.property_version_base)
+
         if property_json:
-            matching_rules = utility_object.search_for_json_rule_by_name(property_json['rules'], 'name', onboard_object.property_rule_name)
+            matching_rules = util.search_for_json_rule_by_name(property_json['rules'],
+                                                               target_key='name',
+                                                               target_value=onboard.property_rule_name)
             if matching_rules:
                 if len(matching_rules) > 1:
-                    logger.info('Warning! More than one rule name matching the input rule name. Using first matching rule')
-                onboard_object.ruletree_rules_loc = matching_rules[0]
-                return (property_json, True)
+                    logger.warning('Warning! More than one rule name matching the input rule name. Using first matching rule')
+                logger.debug(matching_rules[0])
+                onboard.ruletree_rules_loc = matching_rules[0]
+                return property_json
             else:
-                sys.exit(logger.error(f'{onboard_object.property_rule_name} is not found in the property'))
+                msg = f'{onboard.property_rule_name} is not found in the property'
         else:
-            sys.exit(logger.error(f'{onboard_object.property_rule_name} unable to retrieve property version {onboard_object.property_version_base}'))
+            msg = f'{onboard.property_rule_name} unable to retrieve property version {onboard.property_version_base}'
 
-    def update_custom_property(self, config, onboard_object, wrapper_object, utility_object, updated_property_rule_tree, ruleFormat):
+        sys.exit(logger.error(msg))
+
+    def update_custom_property(self, onboard: Onboard, papi: apiCallsWrapper, ruleFormat) -> None:
         """
         Function with multiple goals:
             1. Create new property version
             2. Update the property with template rules define
         """
-
-        # set property name and hostnames the dict key value
-
-        create_property_response = wrapper_object.create_new_property_version(onboard_object.property_id,
-                                                                onboard_object.contract_id,
-                                                                onboard_object.group_id,
-                                                                onboard_object.property_version_base
-                                                                )
-        if create_property_response.status_code == 201:
-            onboard_object.updated_property_version = create_property_response.json()['versionLink'].split('?')[0].split('/')[-1]
-
-            logger.info(f"Created new property version: '{onboard_object.updated_property_version}'")
+        # Create new version
+        create_resp = papi.create_new_property_version(onboard.property_id,
+                                                       onboard.contract_id,
+                                                       onboard.group_id,
+                                                       onboard.property_version_base)
+        if not create_resp.ok:
+            logger.error(json.dumps(create_resp.json(), indent=4))
+            sys.exit(logger.error('Unable to create property version'))
         else:
-            logger.error('Unable to create property version')
-            sys.exit(logger.error(json.dumps(create_property_response.json(), indent=4)))
+            onboard.updated_property_version = create_resp.json()['versionLink'].split('?')[0].split('/')[-1]
+            logger.info(f'Created new property version: v{onboard.updated_property_version}')
 
         # Update Property Rules
-        updateRulesResponse = wrapper_object.updatePropertyRules(onboard_object.contract_id,
-                                                                onboard_object.group_id,
-                                                                onboard_object.property_id,
-                                                                ruleFormat,
-                                                                ruletree=json.dumps({'rules': updated_property_rule_tree}),
-                                                                version=onboard_object.updated_property_version)
+        update_resp = papi.updatePropertyRules(onboard.contract_id,
+                                               onboard.group_id,
+                                               onboard.property_id,
+                                               ruleFormat,
+                                               ruletree=json.dumps({'rules': onboard.updated_property_rule_tree}),
+                                               version=onboard.updated_property_version)
 
-        if updateRulesResponse.status_code == 200:
-            logger.info('Updated property with rules')
-            print()
-            return (True)
-        else:
+        if not update_resp.ok:
             logger.error('Unable to update rules for property')
-            sys.exit(logger.error(json.dumps(updateRulesResponse.json(), indent=4)))
+            sys.exit(logger.error(json.dumps(update_resp.json(), indent=4)))
+        else:
+            logger.info('Updated property with rules')

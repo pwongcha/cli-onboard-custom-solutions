@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import configparser
 import json
-import logging.config
 import os
 import sys
 import time
@@ -994,68 +993,52 @@ def custom(config, **kwargs):
     Update delivery config + cloudlet policy + waf
     """
     logger.info('Start Akamai CLI onboard')
-    _, wrapper_object = init_config(config)
-    click_args = kwargs
+    _, papi = init_config(config)
     start_time = time.perf_counter()
 
-    onboard_object = onboard_custom.onboard(config, click_args)
+    # prerequitsite - akamai cli and cli pipeline are installed
+    util = utility.utility()
+    cli_installed = util.installedCommandCheck('akamai')
+    pipeline_installed = util.executeCommand(['akamai', 'pipeline'])
 
-    # Validate setup and akamai cli and cli pipeline are installed
-    csv = click_args['csv']
-    utility_object = utility.utility()
-
-    # Validate akamai cli and cli pipeline are installed
-    cli_installed = utility_object.installedCommandCheck('akamai')
-    pipeline_installed = utility_object.executeCommand(['akamai', 'pipeline'])
-
-    if not (pipeline_installed and (cli_installed or pipeline_installed)):
+    if not cli_installed or not pipeline_installed:
         sys.exit()
 
-    utility_papi_object = utility_papi.papiFunctions()
-    utility_waf_object = utility_waf.wafFunctions()
-
-    # validate setup steps when csv input provided
-    utility_object.env_validator(onboard_object)
-    utility_object.csv_2_path_array(onboard_object)
-    utility_object.validateCustomSteps(onboard_object, wrapper_object)
-
-    # Got this far, we are ready to try and execute the actual steps
-    if utility_object.valid is True:
-
-        property_rule_tree, rule_exists = utility_papi_object.custom_property_version(config, onboard_object, wrapper_object, utility_object)
-
-        # create new cpcode for each path
-        cpcodeList = {}
-        for path in onboard_object.path_dict:
-            if not click_args['use_cpcode']:
-                new_cpcode_name = f'www.test.com.curated.{path["rulename"]}'
-                # check if cpcode already exists
-                cpcode = utility_papi_object.create_new_cpcode(onboard_object,
-                                                            wrapper_object,
-                                                            new_cpcode_name,
-                                                            onboard_object.contract_id,
-                                                            onboard_object.group_id,
-                                                            onboard_object.product_id)
-            else:
-                cpcode = int(click_args['use_cpcode'])
-            cpcodeList[path['rulename']] = cpcode
-
-        # build dictonary of json rules based on paths from csv input
-        onboard_object.updated_property_rule_tree = utility_object.create_new_rule_json(onboard_object, property_rule_tree['rules'], cpcodeList)
-
-        # create new properties based on json rule tree dictionary
-        update_property_success = utility_papi_object.update_custom_property(config, onboard_object, wrapper_object, utility_object, onboard_object.updated_property_rule_tree, property_rule_tree['ruleFormat'])
-
-        print()
-        end_time = time.perf_counter()
-        elapse_time = str(strftime('%H:%M:%S', gmtime(end_time - start_time)))
-        logger.info(f'TOTAL DURATION: {elapse_time}, End Akamai CLI onboard')
-
+    # validation
+    onboard = onboard_custom.Onboard(config, kwargs)
+    onboard.paths = util.csv_2_path_array(onboard)
+    if len(onboard.paths) == 0:
+        sys.exit(logger.error('rulename cannot be empty.  please check path column in input CSV file'))
     else:
-        logger.error('Please correct the setup json file settings and try again.')
-        return 0
+        onboard.env_details = util.env_validator(onboard)
+        util_waf = utility_waf.wafFunctions()
+        if util.validateCustomSteps(onboard, papi):
+            util_papi = utility_papi.papiFunctions()
+            property_rule_tree = util_papi.custom_property_version(onboard, papi, util)
 
-    return 0
+    # create new cpcode for each path
+    cpcodes = {}
+    for path in onboard.paths:
+        if kwargs['use_cpcode']:
+            cpcode = int(kwargs['use_cpcode'])
+        else:
+            new_cpcode_name = f'www.test.com.curated.{path["rulename"]}'
+            cpcode = util_papi.create_new_cpcode(onboard,
+                                                 papi,
+                                                 new_cpcode_name,
+                                                 onboard.contract_id,
+                                                 onboard.group_id,
+                                                 onboard.product_id)
+        cpcodes[path['rulename']] = cpcode
+
+    # create new properties based on json rule tree dictionary
+    onboard.updated_property_rule_tree = util.create_new_rule_json(onboard, cpcodes, property_rule_tree['rules'])
+    util_papi.update_custom_property(onboard, papi, property_rule_tree['ruleFormat'])
+
+    print()
+    end_time = time.perf_counter()
+    elapse_time = str(strftime('%H:%M:%S', gmtime(end_time - start_time)))
+    logger.info(f'TOTAL DURATION: {elapse_time}, End Akamai CLI onboard')
 
 
 def get_prog_name():

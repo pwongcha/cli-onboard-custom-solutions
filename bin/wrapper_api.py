@@ -710,6 +710,21 @@ class apiCallsWrapper:
 
         return ruletree
 
+    def get_property_version_details(self, property_id: str, contract_id: str, group_id: str, version: int):
+        url = self.formUrl(f'https://{self.access_hostname}/papi/v1/properties/{property_id}/versions/{version}?contractId={contract_id}&groupId={group_id}')
+        resp = self.session.get(url, headers=headers)
+        if resp.status_code == 200:
+            try:
+                version = resp.json()['versions']['items'][0]['productId']
+            except KeyError:
+                version = False
+                logger.debug(resp.content)
+        else:
+            version = False
+            logger.debug(resp.content)
+
+        return version
+
     def create_new_property_version(self, property_id, contract_id, group_id, version):
         """
         Function to create property

@@ -979,7 +979,6 @@ def appsec_create(config, contract_id, group_id, by, activate, csv, email):
 @click.option('--env', metavar='', help='environment JSON file', required=True, default='prod')
 @click.option('--build-env', metavar='', help='environment to build', required=True, default='dev')
 @click.option('--property-version', metavar='', help='property version to build from prod network', required=True)
-@click.option('--product', metavar='', help='product code', default='prd_SPM', required=True)
 @click.option('--waf-config', metavar='', help='name of security configuration to update')
 @click.option('--waf-match-target', metavar='', help='waf match target id (numeric) to add hostnames')
 @click.option('--activate', metavar='', type=click.Choice(['delivery-staging', 'waf-staging', 'delivery-production', 'waf-production']),

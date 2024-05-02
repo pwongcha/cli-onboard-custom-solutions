@@ -749,6 +749,12 @@ class utility:
                         except:
                             logger.error(f'{onboard.property_version_base}{space:>{column_width - len(onboard.property_version_base)}}property version invalid..must be integer')
                             count += 1
+                    onboard.product_id = papi.get_property_version_details(onboard.property_id, onboard.contract_id, onboard.group_id, onboard.property_version_base)
+                    logger.info(f'{onboard.product_id}{space:>{column_width - len(f"{onboard.product_id}")}}product id')
+
+                    if not onboard.product_id:
+                        count += 1
+                        logger.error(f'{space:>{column_width - 0}}unable to get product id')
                 else:
                     logger.error(f'{space:>{column_width - 0}}unable to get property details')
 

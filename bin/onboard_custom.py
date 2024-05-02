@@ -14,7 +14,7 @@ class Onboard:
             self.valid_csv = True
             self.valid_env = True
             self.paths = []
-            self.product_id = click_args['product']
+            self.product_id = ''
             self.property_version = click_args['property_version']
 
             if 'delivery-staging' in click_args['activate']:

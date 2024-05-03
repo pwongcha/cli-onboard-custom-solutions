@@ -722,7 +722,6 @@ class utility:
             count += 1
         else:
             onboard.property_name = onboard.env_details[onboard.build_env]['property_name']
-            # logger.info(f'{onboard.property_name}{space:>{column_width - len(onboard.property_name)}}input property name found')
             if not papi.property_exists(onboard.property_name):
                 logger.error(f'{onboard.property_name}{space:>{column_width - len(onboard.property_name)}}property name on env file does not exist')
                 count += 1
@@ -770,12 +769,19 @@ class utility:
             else:
                 onboard.property_rule_name = onboard.env_details[onboard.build_env]['property_rule_name']
                 logger.info(f'{onboard.property_rule_name}{space:>{column_width - len(onboard.property_rule_name)}}property rule name to inject into')
-                print()
 
             onboard.waf_config_name = onboard.env_details[onboard.build_env]['waf_config_name']
-            onboard.waf_policy_name = onboard.env_details[onboard.build_env]['waf_config_policy_name']
+            onboard.waf_policy_name = onboard.env_details[onboard.build_env]['waf_policy_name']
             onboard.waf_match_target_id = onboard.env_details[onboard.build_env]['waf_match_target_id']
-            waf_config_detail = self.getWafConfigIdByName(papi, onboard.waf_config_name)
+            if onboard.waf_config_name == '':
+                count += 1
+                logger.error(f'{onboard.waf_config_name}{space:>{column_width - len(onboard.waf_config_name)}}invalid waf_config_name, not found')
+            else:
+                waf_config_detail = self.getWafConfigIdByName(papi, onboard.waf_config_name)
+                if not waf_config_detail['Found']:
+                    count += 1
+                    logger.error(f'{onboard.waf_config_name}{space:>{column_width - len(onboard.waf_config_name)}}invalid waf_config_name, not found')
+
             if waf_config_detail['Found']:
                 onboard.onboard_waf_config_id = waf_config_detail['details']['id']
                 onboard.onboard_waf_prev_version = waf_config_detail['details']['latestVersion']
@@ -794,25 +800,22 @@ class utility:
                 logger.info(f'{onboard.onboard_waf_prev_version}{space:>{column_width - len(str(onboard.onboard_waf_prev_version))}}latest version')
                 logger.info(f'{onboard.waf_stage_version}{space:>{column_width - len(str(onboard.waf_stage_version))}}staging version')
                 logger.info(f'{onboard.waf_prod_version}{space:>{column_width - len(str(onboard.waf_prod_version))}}production version')
-            else:
-                count += 1
-                logger.error(f'{onboard.waf_config_name}{space:>{column_width - len(onboard.waf_config_name)}}invalid waf_config_name, not found')
 
-            if onboard.onboard_waf_config_id is not None:
-                logger.debug(f'{onboard.onboard_waf_config_id} {onboard.waf_prod_version}')
-                _, policies = papi.get_waf_policy(onboard)
-                _, target_ids = papi.list_match_targets(onboard.onboard_waf_config_id,
-                                                                    onboard.onboard_waf_prev_version,
-                                                                    policies)
+                if onboard.onboard_waf_config_id is not None:
+                    logger.debug(f'{onboard.onboard_waf_config_id} {onboard.waf_prod_version}')
+                    _, policies = papi.get_waf_policy(onboard)
+                    _, target_ids = papi.list_match_targets(onboard.onboard_waf_config_id,
+                                                                        onboard.onboard_waf_prev_version,
+                                                                        policies)
 
-                if onboard.waf_match_target_id in target_ids:
-                    for k in policies:
-                        if onboard.waf_match_target_id in policies[k]:
-                            logger.info(f'{policies[k][0]}{space:>{column_width - len(policies[k][0])}}found existing policy')
-                            logger.info(f'{onboard.waf_match_target_id}{space:>{column_width - len(str(onboard.waf_match_target_id))}}found waf_match_target_id')
-                else:
-                    logger.error(f'{onboard.waf_match_target_id}{space:>{column_width - len(str(onboard.waf_match_target_id))}}invalid waf_match_target_id')
-                    count += 1
+                    if onboard.waf_match_target_id in target_ids:
+                        for k in policies:
+                            if onboard.waf_match_target_id in policies[k]:
+                                logger.info(f'{policies[k][0]}{space:>{column_width - len(policies[k][0])}}found existing policy')
+                                logger.info(f'{onboard.waf_match_target_id}{space:>{column_width - len(str(onboard.waf_match_target_id))}}found waf_match_target_id')
+                    else:
+                        logger.error(f'{onboard.waf_match_target_id}{space:>{column_width - len(str(onboard.waf_match_target_id))}}invalid waf_match_target_id')
+                        count += 1
 
         if count == 0:
             self.valid = True

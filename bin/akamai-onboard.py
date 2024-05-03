@@ -992,7 +992,7 @@ def custom(config, **kwargs):
     Update delivery config + cloudlet policy + waf
     """
     logger.info('Start Akamai CLI onboard')
-    _, papi = init_config(config)
+    _, wrapper = init_config(config)
     start_time = time.perf_counter()
 
     # prerequitsite - akamai cli and cli pipeline are installed
@@ -1011,9 +1011,15 @@ def custom(config, **kwargs):
     else:
         onboard.env_details = util.env_validator(onboard)
         util_waf = utility_waf.wafFunctions()
-        if util.validateCustomSteps(onboard, papi):
+        if util.validateCustomSteps(onboard, wrapper):
             util_papi = utility_papi.papiFunctions()
-            property_rule_tree = util_papi.custom_property_version(onboard, papi, util)
+            property_rule_tree = util_papi.custom_property_version(onboard, wrapper, util)
+            paths_already_exist = util.check_existing_custom_rules(onboard, property_rule_tree['rules'])
+            if paths_already_exist:
+                logger.info(f'{len(paths_already_exist)} path rules already exist.')
+                for path in paths_already_exist:
+                    logger.info(path)
+                sys.exit(logger.error('please review and rerun'))
 
     # create new cpcode for each path
     cpcodes = {}
@@ -1021,18 +1027,36 @@ def custom(config, **kwargs):
         if kwargs['use_cpcode']:
             cpcode = int(kwargs['use_cpcode'])
         else:
-            new_cpcode_name = f'www.test.com.curated.{path["rulename"]}'
+            new_cpcode_name = f"{onboard.env_details[onboard.build_env]['cpcode_prefix']}.{path['rulename']}"
             cpcode = util_papi.create_new_cpcode(onboard,
-                                                 papi,
+                                                 wrapper,
                                                  new_cpcode_name,
                                                  onboard.contract_id,
                                                  onboard.group_id,
                                                  onboard.product_id)
         cpcodes[path['rulename']] = cpcode
 
-    # create new properties based on json rule tree dictionary
+    # create new property version based on json rule tree dictionary
     onboard.updated_property_rule_tree = util.create_new_rule_json(onboard, cpcodes, property_rule_tree['rules'])
-    util_papi.update_custom_property(onboard, papi, property_rule_tree['ruleFormat'])
+    util_papi.update_custom_property(onboard, wrapper, property_rule_tree['ruleFormat'])
+
+    util_waf = utility_waf.wafFunctions()
+    print()
+    logger.warning('Updating Security Config')
+    logger.debug(f'Trying to create new version for WAF configuration: {onboard.waf_config_name}')
+    create_waf_version = util_waf.createWafVersion(wrapper, onboard, notes=onboard.version_notes)
+    wrapper.update_waf_config_version_note(onboard, notes=onboard.version_notes)
+    if create_waf_version is False:
+        sys.exit()
+    # Update WAF match target
+    modify_matchtarget = util_waf.updateMatchTargetPaths(wrapper, list(map(lambda x: x['path_match'], onboard.paths)),
+                                                         onboard.onboard_waf_config_id,
+                                                         onboard.onboard_waf_config_version,
+                                                         onboard.waf_match_target_id)
+    if modify_matchtarget:
+        logger.info(f"Successfully added {list(map(lambda x: x['path_match'], onboard.paths))} to WAF Configuration Match Target")
+    else:
+        sys.exit(logger.error('Unable to update match target in WAF Configuration'))
 
     print()
     end_time = time.perf_counter()

@@ -7,6 +7,7 @@ from pathlib import Path
 class Onboard:
     def __init__(self, config, click_args):
         try:
+            self.version_notes = 'adding paths via cli'
             self.property_name = []
             self.csv_loc = self.get_actual_location(click_args['csv'])
             self.env_loc = self.get_actual_location(click_args['env'])
@@ -14,7 +15,6 @@ class Onboard:
             self.valid_csv = True
             self.valid_env = True
             self.paths = []
-            self.product_id = ''
             self.property_version = click_args['property_version']
 
             if 'delivery-staging' in click_args['activate']:

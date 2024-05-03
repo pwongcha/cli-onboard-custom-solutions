@@ -995,12 +995,13 @@ def custom(config, **kwargs):
     _, wrapper = init_config(config)
     start_time = time.perf_counter()
 
-    # prerequitsite - akamai cli and cli pipeline are installed
+    # akamai cli prerequitsite
     util = utility.utility()
     cli_installed = util.installedCommandCheck('akamai')
     pipeline_installed = util.executeCommand(['akamai', 'pipeline'])
+    cloudlets_installed = util.executeCommand(['akamai', 'cloudlets'])
 
-    if not cli_installed or not pipeline_installed:
+    if not cli_installed or (not pipeline_installed or not cloudlets_installed):
         sys.exit()
 
     # validation

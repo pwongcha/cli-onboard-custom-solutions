@@ -63,16 +63,22 @@ class utility:
         """
         Function to execute Linux commands
         """
-        childprocess = subprocess.Popen(command,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT)
+        childprocess = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         stdout, stderr = childprocess.communicate()
         if 'pipeline' in command and 'akamai [global flags]' in str(stdout):
             self.valid = False
+            print()
             logger.error('This program needs akamai CLI module property-manager as a pre-requisite')
             logger.warning('Please install from https://github.com/akamai/cli-property-manager')
             logger.warning('or run >> akamai install property-manager')
-            return self.valid
+
+        if 'cloudlets' in command and 'akamai [global flags]' in str(stdout):
+            self.valid = False
+            print()
+            logger.error('This program needs akamai CLI module cloudlets as a pre-requisite')
+            logger.warning('Please install from https://github.com/akamai/cli-cloudlets')
+            logger.warning('or run >> akamai install cloudlets')
+
         return self.valid
 
     def checkPermissions(self, session, apicalls_wrapper_object):

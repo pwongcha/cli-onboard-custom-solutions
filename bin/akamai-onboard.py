@@ -16,6 +16,8 @@ from __future__ import annotations
 import configparser
 import json
 import os
+import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -1009,18 +1011,18 @@ def custom(config, **kwargs):
     onboard.paths = util.csv_2_path_array(onboard)
     if len(onboard.paths) == 0:
         sys.exit(logger.error('rulename cannot be empty.  please check path column in input CSV file'))
-    else:
-        onboard.env_details = util.env_validator(onboard)
-        util_waf = utility_waf.wafFunctions()
-        if util.validateCustomSteps(onboard, wrapper):
-            util_papi = utility_papi.papiFunctions()
-            property_rule_tree = util_papi.custom_property_version(onboard, wrapper, util)
-            paths_already_exist = util.check_existing_custom_rules(onboard, property_rule_tree['rules'])
-            if paths_already_exist:
-                logger.info(f'{len(paths_already_exist)} path rules already exist.')
-                for path in paths_already_exist:
-                    logger.info(path)
-                sys.exit(logger.error('please review and rerun'))
+
+    onboard.env_details = util.env_validator(onboard)
+    util_waf = utility_waf.wafFunctions()
+    if util.validateCustomSteps(onboard, wrapper):
+        util_papi = utility_papi.papiFunctions()
+        property_rule_tree = util_papi.custom_property_version(onboard, wrapper, util)
+        paths_already_exist = util.check_existing_custom_rules(onboard, property_rule_tree['rules'])
+        if paths_already_exist:
+            logger.info(f'{len(paths_already_exist)} path rules already exist.')
+            for path in paths_already_exist:
+                logger.info(path)
+            sys.exit(logger.error('please review and rerun'))
 
     # create new cpcode for each path
     cpcodes = {}
@@ -1049,6 +1051,7 @@ def custom(config, **kwargs):
     wrapper.update_waf_config_version_note(onboard, notes=onboard.version_notes)
     if create_waf_version is False:
         sys.exit()
+
     # Update WAF match target
     modify_matchtarget = util_waf.updateMatchTargetPaths(wrapper, list(map(lambda x: x['path_match'], onboard.paths)),
                                                          onboard.onboard_waf_config_id,
@@ -1059,10 +1062,10 @@ def custom(config, **kwargs):
     else:
         sys.exit(logger.error('Unable to update match target in WAF Configuration'))
 
+    print()
     if not onboard.activate_property_staging:
         logger.info('Activate Property Staging: SKIPPING')
     else:
-        print()
         status = util_papi.activate_and_poll(wrapper,
                                              onboard.property_name,
                                              onboard.contract_id,
@@ -1082,10 +1085,10 @@ def custom(config, **kwargs):
             if not status:
                 sys.exit()
 
+    print()
     if not onboard.activate_property_production:
-        logger.warning('Activate Property Production: SKIPPING')
+        logger.info('Activate Property Production: SKIPPING')
     else:
-        print()
         status = util_papi.activate_and_poll(wrapper,
                                             onboard.property_name,
                                             onboard.contract_id,
@@ -1104,6 +1107,60 @@ def custom(config, **kwargs):
                 status = util_waf.activateAndPoll(wrapper, onboard, network='PRODUCTION')
                 if not status:
                     sys.exit()
+
+    # cloudlets
+    print()
+    policy = onboard.env_details['dev']['cloudlet_policy']
+    cmd = f'akamai cloudlets -a {config.account_key} -s {config.section}'
+    cmd = f'{cmd} retrieve --only-match-rules --json --policy {policy}'
+    command = cmd.split(' ')
+    print()
+    logger.critical(cmd)
+    childprocess = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=False)
+    stdout, stderr = childprocess.communicate()
+    if 'policy_matchrules.json' not in stdout.decode('utf-8'):
+        sys.exit(logger.info(stderr))
+
+    uc = utility.Cloudlets()
+    cloudlet_rules = load_json('policy_matchrules.json')
+    path_matches = set(list(map(lambda x: x['path_match'], onboard.paths)))
+    new_value = ' '.join(path_matches)
+    logger.debug(new_value)
+    updated_rules = {}
+    rules = uc.update_phasedrelease_rule(cloudlet_rules, 'Property', new_value)
+    updated_rules['matchRuleFormat'] = '1.0'
+    updated_rules['matchRules'] = rules
+
+    with open('policy_matchrules_updated.json', 'w') as f:
+        json.dump(updated_rules, f, indent=4)
+
+    cmd = f'akamai cloudlets -a {config.account_key} -s {config.section}'
+    cmd = f'{cmd} update --policy {policy} --file policy_matchrules_updated.json'
+    command = cmd.split(' ')
+    print()
+    logger.critical(cmd)
+    update_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    stdout, stderr = update_cloudlet_cli.communicate()
+
+    if 'new version ' not in stdout.decode('utf-8'):
+        sys.exit(logger.error(stdout.decode('utf-8')))
+    else:
+        create_output = stdout.decode('utf-8')
+        logger.debug(create_output)
+        pattern = r'version (\d+)'
+        match = re.search(pattern, create_output)
+        if match:
+            version_number = match.group(1)
+            logger.info(f'cloudlet new version number: v{version_number}')
+
+    cmd = f'akamai cloudlets -a {config.account_key} -s {config.section}'
+    cmd = f'{cmd} activate --policy {policy} --network staging --version {version_number}'
+    command = cmd.split(' ')
+    print()
+    logger.critical(cmd)
+    act_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    stdout, stderr = act_cloudlet_cli.communicate()
+    print(stdout.decode('utf-8'))
 
     print()
     end_time = time.perf_counter()

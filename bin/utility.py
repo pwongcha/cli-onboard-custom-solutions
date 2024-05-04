@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import time
+from copy import deepcopy
 from pathlib import Path
 from shutil import which
 from time import gmtime
@@ -1852,11 +1853,61 @@ class utility:
         full_ruleset = self.get_full_behavior_by_jsonpath(ruletree, loc)
         input_rule_names = set(list(map(lambda x: x['rulename'], onboard.paths)))
         existing_rule_names = set(list(map(lambda x: x['name'], full_ruleset['children'])))
+        return list(existing_rule_names.intersection(input_rule_names))
 
-        overlap = existing_rule_names.intersection(input_rule_names)
-        overlap_list = list(overlap)
 
-        if overlap_list:
-            return (overlap_list)
-        else:
-            return (False)
+class Cloudlets:
+    def __init__(self):
+        pass
+
+    def update_phasedrelease_rule(self,
+                                   rules: dict,
+                                   rulename: str,
+                                   new_value: str,
+                                   matchon_type: str | None = None):
+
+        original_property = []
+        index = 0
+        match_rules = rules['matchRules']
+        for i, rule in enumerate(match_rules):
+            name = rule['name']
+            if name != rulename:
+                continue
+
+            index = i
+            matches = rule['matches']
+            origin = rule['forwardSettings']['originId']
+            percent = rule['forwardSettings']['percent']
+            for j, element in enumerate(matches):
+                match_value = element['matchValue']
+                match_operator = element['matchOperator']
+                match_type = element['matchType']
+                negative_match = element['negate']
+                xs = match_value.split(' ')
+
+                str_count = len(match_value)
+                elements = len(xs)
+                msg = f'{name:<30} {match_operator:<10}'
+                options = f'{str(negative_match):<10} {match_type:<8}  {origin:<25} {percent}'
+                logger.debug(f'{i:>3}.{j} {msg} {elements:<5} {str_count:<10} {options}')
+
+                if negative_match:
+                    if len(match_value) > 8000:
+                        original_property.append(element)
+                    else:
+                        if not match_value[0].startswith('/en/hotel/'):
+                            original_property.append(element)
+                        else:
+                            match_value = f'{match_value} {new_value}'
+                            element['matchValue'] = match_value
+                            original_property.append(element)
+                else:
+                    original_property.append(element)
+
+        logger.warning(f"Number of condition for rule {rulename} before/after: {len(match_rules[index]['matches'])}/{len(original_property)}")
+        match_rules[index]['matches'] = original_property
+        for i, match in enumerate(match_rules[index]['matches']):
+            str_count = len(match['matchValue'])
+            logger.debug(f'{i:<3} {str_count:<10}')
+
+        return match_rules

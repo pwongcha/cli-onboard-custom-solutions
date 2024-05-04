@@ -724,53 +724,92 @@ class utility:
         else:
             onboard.property_name = onboard.env_details[onboard.build_env]['property_name']
             if not papi.property_exists(onboard.property_name):
-                logger.error(f'{onboard.property_name}{space:>{column_width - len(onboard.property_name)}}property name on env file does not exist')
+                logger.error(f'{onboard.property_name}{space:>{column_width - len(onboard.property_name)}}property name on JSON file does not exist')
                 count += 1
             else:
                 logger.info(f'{onboard.property_name}{space:>{column_width - len(onboard.property_name)}}property name')
+
                 onboard.property_details = papi.get_property_id(onboard.property_name)
-                if onboard.property_details:
+                if not onboard.property_details:
+                    logger.error(f'{space:>{column_width}}unable to get property details')
+                    count += 1
+                else:
+                    # propertyId, groupId, contractId
                     onboard.property_id = onboard.property_details[0]['propertyId']
-                    onboard.group_id = onboard.property_details[0]['groupId']
                     onboard.contract_id = onboard.property_details[0]['contractId']
-                    production_version = list(filter(lambda x: x['productionStatus'] == 'ACTIVE', onboard.property_details))
-                    if production_version:
-                        onboard.property_production_version = production_version[0]['propertyVersion']
-                    else:
-                        onboard.property_production_version = None
-                    onboard.property_latest_version = max(list(map(lambda x: x['propertyVersion'], onboard.property_details)))
+                    onboard.group_id = onboard.property_details[0]['groupId']
                     logger.info(f'{onboard.property_id}{space:>{column_width - len(f"{onboard.property_id}")}}property id')
-                    logger.info(f'{onboard.group_id}{space:>{column_width - len(f"{onboard.group_id}")}}group id')
                     logger.info(f'{onboard.contract_id}{space:>{column_width - len(f"{onboard.contract_id}")}}contract id')
-                    logger.info(f'{onboard.property_production_version}{space:>{column_width - len(f"{onboard.property_production_version}")}}production version')
-                    logger.info(f'{onboard.property_latest_version}{space:>{column_width - len(f"{onboard.property_latest_version}")}}latest version')
-                    if onboard.property_version == 'prod':
+                    logger.info(f'{onboard.group_id}{space:>{column_width - len(f"{onboard.group_id}")}}group id')
+
+                    # propertyVersion
+                    onboard.property_latest_version = max(list(map(lambda x: x['propertyVersion'], onboard.property_details)))
+                    try:
+                        onboard.property_staging_version = list(filter(lambda x: x['stagingStatus'] == 'ACTIVE',
+                                                                        onboard.property_details))[0]['propertyVersion']
+                    except IndexError:
+                        onboard.property_staging_version = None
+                    try:
+                        onboard.property_production_version = list(filter(lambda x: x['productionStatus'] == 'ACTIVE',
+                                                                        onboard.property_details))[0]['propertyVersion']
+                    except IndexError:
+                        onboard.property_production_version = None
+
+                    # version summary
+                    empty = (column_width
+                             - len(f'{onboard.property_latest_version}')  # noqa W503
+                             - len(f'{onboard.property_staging_version}')  # noqa W503
+                             - len(f'{onboard.property_production_version}')  # noqa W503
+                             - 5)  # noqa W503
+                    msg_versions = f'v{onboard.property_latest_version}:v{onboard.property_staging_version}:v{onboard.property_production_version}'
+                    logger.info(f'{msg_versions}{space:>{empty}}latest:staging:production version')
+
+                    if onboard.property_version.lower() == 'prod':
                         onboard.property_version_base = onboard.property_production_version
-                    elif onboard.property_version == 'latest':
+                        logger.info(f'v{onboard.property_version_base}{space:>{column_width - 1 - len(f"{onboard.property_version_base}")}}build from version')
+                    elif onboard.property_version.lower() == 'staging':
+                        onboard.property_version_base = onboard.property_staging_version
+                        logger.info(f'v{onboard.property_version_base}{space:>{column_width - 1 - len(f"{onboard.property_version_base}")}}build from version')
+                    elif onboard.property_version.lower() == 'latest':
                         onboard.property_version_base = onboard.property_latest_version
-                        logger.info(f'{onboard.property_version}{space:>{column_width - len(f"{onboard.property_version}")}}building from')
+                        logger.info(f'v{onboard.property_version_base}{space:>{column_width - 1 - len(f"{onboard.property_version_base}")}}build from version')
                     else:
                         try:
                             onboard.property_version_base = int(onboard.property_version)
-                        except:
-                            logger.error(f'{onboard.property_version_base}{space:>{column_width - len(onboard.property_version_base)}}property version invalid..must be integer')
+                            if onboard.property_version_base <= 0:
+                                logger.error(f'v{onboard.property_version_base}{space:>{column_width - 2}}invalid property version must be >= 1')
+                                count += 1
+                            elif onboard.property_version_base > onboard.property_latest_version:
+                                logger.error(f'v{onboard.property_version}{space:>{column_width - 1 - len(f"{onboard.property_version}")}}invalid property version')
+                                count += 1
+                            else:
+                                logger.info(f'v{onboard.property_version_base}{space:>{column_width - 1 - len(f"{onboard.property_version_base}")}}build from version')
+                        except (AttributeError, ValueError):
+                            logger.error(f'{onboard.property_version}{space:>{column_width - len(f"{onboard.property_version}")}}invalid property version..must be integer')
                             count += 1
+                            self.valid = False
+                            return self.valid
+
+                    # productId
                     onboard.product_id = papi.get_property_version_details(onboard.property_id, onboard.contract_id, onboard.group_id, onboard.property_version_base)
                     logger.info(f'{onboard.product_id}{space:>{column_width - len(f"{onboard.product_id}")}}product id')
-
                     if not onboard.product_id:
                         count += 1
                         logger.error(f'{space:>{column_width - 0}}unable to get product id')
-                else:
-                    logger.error(f'{space:>{column_width - 0}}unable to get property details')
 
+            # rulename
             if 'property_rule_name' not in onboard.env_details[onboard.build_env].keys():
                 logger.error(f'property_rule_name{space:>{column_width - len("property_rule_name")}}not found in environment file')
                 count += 1
             else:
                 onboard.property_rule_name = onboard.env_details[onboard.build_env]['property_rule_name']
-                logger.info(f'{onboard.property_rule_name}{space:>{column_width - len(onboard.property_rule_name)}}property rule name to inject into')
+                if onboard.property_rule_name.strip(' ') == '':
+                    logger.error(f'{onboard.property_rule_name}{space:>{column_width - len(onboard.property_rule_name)}}rule name cannot be empty')
+                    count += 1
+                else:
+                    logger.info(f'{onboard.property_rule_name}{space:>{column_width - len(onboard.property_rule_name)}}rule name to inject into')
 
+            # security
             onboard.waf_config_name = onboard.env_details[onboard.build_env]['waf_config_name']
             onboard.waf_policy_name = onboard.env_details[onboard.build_env]['waf_policy_name']
             onboard.waf_match_target_id = onboard.env_details[onboard.build_env]['waf_match_target_id']
@@ -798,9 +837,14 @@ class utility:
                 logger.debug(f'{onboard.onboard_waf_config_id} {onboard.onboard_waf_prev_version} {onboard.waf_prod_version} {onboard.waf_stage_version}')
                 logger.info(f'{onboard.waf_config_name}{space:>{column_width - len(onboard.waf_config_name)}}valid waf_config_name')
                 logger.info(f'{onboard.onboard_waf_config_id}{space:>{column_width - len(str(onboard.onboard_waf_config_id))}}waf config id')
-                logger.info(f'{onboard.onboard_waf_prev_version}{space:>{column_width - len(str(onboard.onboard_waf_prev_version))}}latest version')
-                logger.info(f'{onboard.waf_stage_version}{space:>{column_width - len(str(onboard.waf_stage_version))}}staging version')
-                logger.info(f'{onboard.waf_prod_version}{space:>{column_width - len(str(onboard.waf_prod_version))}}production version')
+
+                empty = (column_width
+                         - len(f'{onboard.onboard_waf_prev_version}')  # noqa W503
+                         - len(f'{onboard.waf_stage_version}')  # noqa W503
+                         - len(f'{onboard.waf_prod_version}')  # noqa W503
+                         - 5)  # noqa W503
+                msg_versions = f'v{onboard.onboard_waf_prev_version}:v{onboard.waf_stage_version}:v{onboard.waf_prod_version}'
+                logger.info(f'{msg_versions}{space:>{empty}}latest:staging:production version')
 
                 if onboard.onboard_waf_config_id is not None:
                     logger.debug(f'{onboard.onboard_waf_config_id} {onboard.waf_prod_version}')
@@ -820,8 +864,6 @@ class utility:
 
         if count == 0:
             self.valid = True
-            print()
-            logger.warning('Inputs Valid')
         else:
             self.valid = False
             sys.exit(logger.error(f'Total {count} errors, please review'))
@@ -831,10 +873,7 @@ class utility:
     def validateFile(self, source: str, file_location: str) -> bool:
         logger.debug(f'{file_location} {type(file_location)} {os.path.exists(file_location)}')
         logger.debug(os.path.abspath(file_location))
-        if os.path.isfile(os.path.abspath(file_location)):
-            return True
-        else:
-            return False
+        return os.path.isfile(os.path.abspath(file_location))
 
     def validateProductId(self, wrapper_object, contract_id, product_id) -> dict:
         """
@@ -851,12 +890,8 @@ class utility:
                     if each_item['productId'] == product_id:
                         products['Found'] = True
                     products['products'].append(each_item['productId'])
-                else:
-                    pass
         else:
             print(json.dumps(get_products_response.json(), indent=4))
-            pass
-
         return products
 
     def validateEdgeHostnameExists(self, wrapper_object, edge_hostname) -> bool:
@@ -890,7 +925,7 @@ class utility:
         config_detail = dict()
         config_detail['Found'] = False
         waf_configs_response = wrapper_object.getWafConfigurations()
-        if waf_configs_response.status_code == 200:
+        if waf_configs_response.ok:
             configurations = waf_configs_response.json()['configurations']
             for each_config in configurations:
                 if 'name' in each_config:

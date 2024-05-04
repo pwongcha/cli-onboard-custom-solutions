@@ -978,17 +978,18 @@ def appsec_create(config, contract_id, group_id, by, activate, csv, email):
 
 @cli.command(short_help='Custom solution')
 @click.option('--csv', metavar='', required=True, help='csv file with headers "path,propertyName"')
-@click.option('--env', metavar='', help='environment JSON file', required=True, default='prod')
-@click.option('--build-env', metavar='', help='environment to build', required=True, default='dev')
-@click.option('--property-version', metavar='', help='property version to build from prod network', required=True)
+@click.option('--env', metavar='', help='environment JSON file', required=True, default='prod', show_default=True)
+@click.option('--build-env', metavar='', help='environment to build', required=True, default='dev', show_default=True)
+@click.option('--property-version', metavar='', default='prod', show_default=True,
+              help='property version to build from network.  options: prod, staging, latest, or numeric value')
 @click.option('--waf-config', metavar='', help='name of security configuration to update')
 @click.option('--waf-match-target', metavar='', help='waf match target id (numeric) to add hostnames')
 @click.option('--activate', metavar='', type=click.Choice(['delivery-staging', 'waf-staging', 'delivery-production', 'waf-production']),
               multiple=True,
-              help='Options: delivery-staging, delivery-production, waf-staging, waf-production')
+              help='options: delivery-staging, delivery-production, waf-staging, waf-production')
 @click.option('--email', metavar='', multiple=True, help='email(s) for activation notifications')
-@click.option('--use-cpcode', metavar='', help='override creating new cpcode for each new path')
-@click.option('--dryrun', metavar='', is_flag=True, default=False, help='validate only')
+@click.option('--use-cpcode', metavar='', help='override creating new cpcode for each new path, provide valid existing numeric value')
+@click.option('--dryrun', metavar='', is_flag=True, default=False, help='validate only', show_default=True)
 @pass_config
 def custom(config, **kwargs):
     """

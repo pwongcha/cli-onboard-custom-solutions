@@ -443,7 +443,11 @@ class papiFunctions:
                                                            onboard.contract_id,
                                                            onboard.group_id,
                                                            onboard.property_version_base)
-
+        space = ' '
+        column_width = 50
+        empty_space = column_width - len(onboard.property_rule_name)
+        print()
+        logger.warning('Validating rulename')
         if property_json:
             matching_rules = util.search_for_json_rule_by_name(property_json['rules'],
                                                                target_key='name',
@@ -453,11 +457,13 @@ class papiFunctions:
                     logger.warning('Warning! More than one rule name matching the input rule name. Using first matching rule')
                 logger.debug(matching_rules[0])
                 onboard.ruletree_rules_loc = matching_rules[0]
+                msg = f'{onboard.property_rule_name}{space:>{empty_space}}rulename found in the property'
+                logger.info(msg)
                 return property_json
             else:
-                msg = f'{onboard.property_rule_name} is not found in the property'
+                msg = f'{onboard.property_rule_name}{space:>{empty_space}}rulename not found in the property'
         else:
-            msg = f'{onboard.property_rule_name} unable to retrieve property version {onboard.property_version_base}'
+            msg = f'{onboard.property_rule_name}{space:>{empty_space}}unable to retrieve property version {onboard.property_version_base}'
 
         sys.exit(logger.error(msg))
 

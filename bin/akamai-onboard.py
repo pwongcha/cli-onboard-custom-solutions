@@ -114,7 +114,7 @@ def init_config(config):
 @pass_config
 def cli(config, edgerc, section, account_key):
     '''
-    Akamai CLI for onboarding properties v2.3.3
+    Akamai CLI for onboarding properties v2.4.0
     '''
     config.edgerc = edgerc
     config.section = section

@@ -988,6 +988,7 @@ def appsec_create(config, contract_id, group_id, by, activate, csv, email):
               help='Options: delivery-staging, delivery-production, waf-staging, waf-production')
 @click.option('--email', metavar='', multiple=True, help='email(s) for activation notifications')
 @click.option('--use-cpcode', metavar='', help='override creating new cpcode for each new path')
+@click.option('--dryrun', metavar='', is_flag=True, default=False, help='validate only')
 @pass_config
 def custom(config, **kwargs):
     """
@@ -1023,6 +1024,9 @@ def custom(config, **kwargs):
             for path in paths_already_exist:
                 logger.info(path)
             sys.exit(logger.error('please review and rerun'))
+
+    if kwargs['dryrun']:
+        sys.exit()
 
     # create new cpcode for each path
     cpcodes = {}

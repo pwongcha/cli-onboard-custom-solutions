@@ -16,6 +16,10 @@ class Onboard:
             self.valid_env = True
             self.paths = []
             self.property_version = click_args['property_version']
+            self.activate_property_staging = False
+            self.activate_waf_policy_staging = False
+            self.activate_property_production = False
+            self.activate_waf_policy_production = False
 
             if 'delivery-staging' in click_args['activate']:
                 self.activate_property_staging = True

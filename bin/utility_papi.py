@@ -30,7 +30,10 @@ class papiFunctions:
         act_response = wrapper_object.activateConfiguration(contract_id, group_id, property_id,
                                                             version, network, emailList, notes)
         logger.debug(act_response.json())
-        if act_response.status_code == 201:
+        if not act_response.status_code:
+            logger.error(json.dumps(act_response.json(), indent=4))
+            return False
+        else:
             activation_status = False
             activation_id = act_response.json()['activationLink'].split('?')[0].split('/')[-1]
             while activation_status is False:
@@ -39,7 +42,11 @@ class papiFunctions:
                                                                                  group_id,
                                                                                  property_id,
                                                                                  activation_id)
-                if activation_status_response.status_code == 200:
+                if not activation_status_response.ok:
+                    logger.error(json.dumps(activation_status_response.json(), indent=4))
+                    logger.error('Unable to get activation status')
+                    return False
+                else:
                     for each_activation in activation_status_response.json()['activations']['items']:
                         if each_activation['activationId'] == activation_id:
                             if network in each_activation['network']:
@@ -48,7 +55,7 @@ class papiFunctions:
                                 elif each_activation['status'] == 'ACTIVE':
                                     end_time = time.perf_counter()
                                     elapse_time = str(strftime('%H:%M:%S', gmtime(end_time - start_time)))
-                                    msg = f'Successfully activated property {property_name} v1 on Akamai {network} network'
+                                    msg = f'Successfully activated property {property_name} v{version} on Akamai {network} network'
                                     logger.info(f'Activation Duration: {elapse_time} {msg}')
                                     activation_status = True
                                     return activation_status
@@ -56,13 +63,6 @@ class papiFunctions:
                                     logger.error('Unable to parse activation status')
                                     activation_status = False
                                     return activation_status
-                else:
-                    logger.error(json.dumps(activation_status_response.json(), indent=4))
-                    logger.error('Unable to get activation status')
-                    return False
-        else:
-            logger.error(json.dumps(act_response.json(), indent=4))
-            return False
 
     def batch_activate_and_poll(self, wrapper_object, propertyDict,
                         contract_id, group_id, version,
@@ -461,7 +461,7 @@ class papiFunctions:
 
         sys.exit(logger.error(msg))
 
-    def update_custom_property(self, onboard: Onboard, papi: apiCallsWrapper, ruleFormat) -> None:
+    def update_custom_property(self, onboard: Onboard, papi: apiCallsWrapper, ruleFormat) -> int:
         """
         Function with multiple goals:
             1. Create new property version
@@ -490,5 +490,7 @@ class papiFunctions:
         if not update_resp.ok:
             logger.error('Unable to update rules for property')
             sys.exit(logger.error(json.dumps(update_resp.json(), indent=4)))
+            return 0
         else:
             logger.info('Updated property with rules')
+            return onboard.updated_property_version

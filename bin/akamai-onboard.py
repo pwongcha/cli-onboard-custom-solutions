@@ -1059,6 +1059,52 @@ def custom(config, **kwargs):
     else:
         sys.exit(logger.error('Unable to update match target in WAF Configuration'))
 
+    if not onboard.activate_property_staging:
+        logger.info('Activate Property Staging: SKIPPING')
+    else:
+        print()
+        status = util_papi.activate_and_poll(wrapper,
+                                             onboard.property_name,
+                                             onboard.contract_id,
+                                             onboard.group_id,
+                                             property_rule_tree['propertyId'],
+                                             version=onboard.updated_property_version,
+                                             network='STAGING',
+                                             emailList=onboard.notification_emails,
+                                             notes='Onboard CLI Activation')
+        if not status:
+            lg._log_exception(msg='Unable to activate property to staging network')
+
+        if not onboard.activate_waf_policy_staging:
+            logger.info('Activate Security configuration on STAGING')
+        else:
+            status = util_waf.activateAndPoll(wrapper, onboard, network='STAGING')
+            if not status:
+                sys.exit()
+
+    if not onboard.activate_property_production:
+        logger.warning('Activate Property Production: SKIPPING')
+    else:
+        print()
+        status = util_papi.activate_and_poll(wrapper,
+                                            onboard.property_name,
+                                            onboard.contract_id,
+                                            onboard.group_id,
+                                            property_rule_tree['propertyId'],
+                                            version=onboard.updated_property_version,
+                                            network='PRODUCTION',
+                                            emailList=onboard.notification_emails,
+                                            notes='Onboard CLI Activation')
+        if not status:
+            logger.error('Unable to activate property to production network')
+        else:
+            if not onboard.activate_waf_policy_production:
+                logger.info('Activate Security configuration on PRODUCTION')
+            else:
+                status = util_waf.activateAndPoll(wrapper, onboard, network='PRODUCTION')
+                if not status:
+                    sys.exit()
+
     print()
     end_time = time.perf_counter()
     elapse_time = str(strftime('%H:%M:%S', gmtime(end_time - start_time)))

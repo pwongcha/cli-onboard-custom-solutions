@@ -1786,7 +1786,7 @@ class utility:
         for rule in onboard.paths:
             json_to_add = self.generate_custom_rule_json(cpcode[rule['rulename']], rule['path_match'], rule['rulename'])
             full_ruleset['children'].append(json_to_add)
-            logger.info(f"{rule['rulename']:<20} {rule['path_match']}")
+            logger.info(f"    rulename {rule['rulename']:<20} {rule['path_match']}")
 
         full_ruleset = sorted(full_ruleset['children'], key=lambda x: x['name'])
 
@@ -1969,8 +1969,9 @@ class Cloudlets:
             pattern = r'version (\d+)'
             match = re.search(pattern, create_output)
             if match:
+                print()
                 version_number = match.group(1)
-                logger.info(f'cloudlet new version number: v{version_number}')
+                logger.warning(f'cloudlet new version number: v{version_number}')
         return version_number
 
     def activate_policy(self, onboard, version: int, network: str):
@@ -2017,9 +2018,9 @@ class Cloudlets:
 
                 str_count = len(match_value)
                 elements = len(xs)
-                msg = f'{name:<30} {match_operator:<10}'
-                options = f'{str(negative_match):<10} {match_type:<8}  {origin:<25} {percent}'
-                logger.info(f'{i:>3}.{j} {msg} {elements:<5} {str_count:<10} {options}')
+                msg = f'{name:<15} {i:>3}.{j}   {match_type:<8} {str(negative_match):<10}'
+                options = f'{origin:<25} {percent}%'
+                logger.info(f'   {msg} {match_operator:<10} {str_count:<7} {elements:<5} {options}')
 
                 LIMIT = 8000
                 if not negative_match:
@@ -2039,10 +2040,14 @@ class Cloudlets:
                         ex['matchValue'] = chunk
                         original_property.append(ex)
 
-        logger.warning(f"Number of condition for rule {rulename} before/after: {len(match_rules[index]['matches'])}/{len(original_property)}")
-        match_rules[index]['matches'] = original_property
-        for i, match in enumerate(match_rules[index]['matches']):
-            str_count = len(match['matchValue'])
-            logger.info(f'{i:<3} {str_count:<10}')
+        if len(original_property) > len(match_rules[index]['matches']):
+            msg = f"{len(match_rules[index]['matches'])}/{len(original_property)}"
+            logger.warning(f'Number of condition for rule {rulename} before/after: {msg}')
+            print()
+
+            match_rules[index]['matches'] = original_property
+            for i, match in enumerate(match_rules[index]['matches']):
+                str_count = len(match['matchValue'])
+                logger.info(f'{i:<3} {str_count:<10}')
 
         return match_rules

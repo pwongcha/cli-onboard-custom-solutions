@@ -14,7 +14,6 @@ from exceptions import setup_logger
 from onboard_custom import Onboard
 from poll import pollActivation
 from wrapper_api import apiCallsWrapper
-
 logger = setup_logger()
 
 
@@ -88,7 +87,11 @@ class papiFunctions:
         all_properties_active, activationDict = pollActivation(propertyDict, wrapper_object, contract_id, group_id, network)
         failed_activations = (list(filter(lambda x: x['activationStatus'][network] not in ['ACTIVE'], activationDict)))
         successful_activations = (list(filter(lambda x: x['activationStatus'][network] in ['ACTIVE'], activationDict)))
-        success_onboarded_hostnames = (list(map(lambda x: x['hostnames'], successful_activations)))
+        try:
+            success_onboarded_hostnames = (list(map(lambda x: x['hostnames'], successful_activations)))
+        except KeyError:
+            success_onboarded_hostnames = []
+
         success_onboarded_hostnames = [item for sublist in success_onboarded_hostnames for item in sublist]
 
         return (all_properties_active, success_onboarded_hostnames, failed_activations, activationDict)
@@ -482,8 +485,9 @@ class papiFunctions:
             logger.error(json.dumps(create_resp.json(), indent=4))
             sys.exit(logger.error('Unable to create property version'))
         else:
+            print()
             onboard.updated_property_version = create_resp.json()['versionLink'].split('?')[0].split('/')[-1]
-            logger.info(f'Created new property version: v{onboard.updated_property_version}')
+            logger.warning(f'Created new property version: v{onboard.updated_property_version}')
 
         # Update Property Rules
         update_resp = papi.updatePropertyRules(onboard.contract_id,
@@ -496,7 +500,5 @@ class papiFunctions:
         if not update_resp.ok:
             logger.error('Unable to update rules for property')
             sys.exit(logger.error(json.dumps(update_resp.json(), indent=4)))
-            return 0
-        else:
-            logger.info('Updated property with rules')
-            return onboard.updated_property_version
+
+        return onboard.updated_property_version

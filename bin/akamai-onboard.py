@@ -16,8 +16,6 @@ from __future__ import annotations
 import configparser
 import json
 import os
-import re
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -984,9 +982,6 @@ def appsec_create(config, contract_id, group_id, by, activate, csv, email):
               help='property version to build from network.  options: prod, staging, latest, or numeric value')
 @click.option('--waf-config', metavar='', help='name of security configuration to update')
 @click.option('--waf-match-target', metavar='', help='waf match target id (numeric) to add hostnames')
-@click.option('--activate', metavar='', type=click.Choice(['delivery-staging', 'waf-staging', 'delivery-production', 'waf-production']),
-              multiple=True,
-              help='options: delivery-staging, delivery-production, waf-staging, waf-production')
 @click.option('--email', metavar='', multiple=True, help='email(s) for activation notifications')
 @click.option('--use-cpcode', metavar='', help='override creating new cpcode for each new path, provide valid existing numeric value')
 @click.option('--dryrun', metavar='', is_flag=True, default=False, help='validate only', show_default=True)
@@ -1009,26 +1004,20 @@ def custom(config, **kwargs):
         sys.exit()
 
     # validation
-    onboard = onboard_custom.Onboard(config, kwargs)
-    onboard.paths = util.csv_2_path_array(onboard)
-    if len(onboard.paths) == 0:
-        sys.exit(logger.error('rulename cannot be empty.  please check path column in input CSV file'))
-
-    onboard.env_details = util.env_validator(onboard)
-    util_waf = utility_waf.wafFunctions()
+    onboard = onboard_custom.Onboard(config, kwargs, util)
     if util.validateCustomSteps(onboard, wrapper):
         util_papi = utility_papi.papiFunctions()
         property_rule_tree = util_papi.custom_property_version(onboard, wrapper, util)
         paths_already_exist = util.check_existing_custom_rules(onboard, property_rule_tree['rules'])
         if paths_already_exist:
             logger.error(f'{len(paths_already_exist)} path rules already exist.')
-            for i, path in enumerate(paths_already_exist, 1):
-                logger.info(f'    {i}. {path}')
+            for path in paths_already_exist:
+                logger.info(f'    {path}')
+            sys.exit(logger.error('please review all errors and rerun'))
 
     # validation cloudlet policy exists
     uc = utility.Cloudlets(config)
-    cloudlet_policy = onboard.env_details[onboard.build_env]['cloudlet_policy']
-    if not uc.validate_cloudlet_policy(cloudlet_policy):
+    if not uc.validate_cloudlet_policy(onboard.cloudlet_policy):
         print()
         sys.exit(logger.error('please review all errors and rerun'))
 
@@ -1056,16 +1045,46 @@ def custom(config, **kwargs):
     onboard.updated_property_rule_tree = util.create_new_rule_json(onboard, cpcodes, property_rule_tree['rules'])
     util_papi.update_custom_property(onboard, wrapper, property_rule_tree['ruleFormat'])
 
-    util_waf = utility_waf.wafFunctions()
     print()
+    property = [{'propertyName': onboard.property_name, 'propertyId': property_rule_tree['propertyId']}]
+
+    if not onboard.activate_property_staging:
+        staging_act_id = 0
+        logger.warning('SKIP - Activate delivery configuration on STAGING')
+    else:
+        _, _, fail, act = util_papi.batch_activate_and_poll(wrapper,
+                                                         property,
+                                                         onboard.contract_id,
+                                                         onboard.group_id,
+                                                         version=onboard.updated_property_version,
+                                                         network='STAGING',
+                                                         emailList=onboard.notification_emails,
+                                                         notes='Onboard CLI Activation')
+        staging_act_id = act[0]['activationId'] if len(fail) == 0 else fail[0]['activationId']
+
+    if not onboard.activate_property_production:
+        prod_act_id = 0
+        logger.warning('SKIP - Activate delivery configuration on PRODUCTION')
+    else:
+        _, _, fail, act = util_papi.batch_activate_and_poll(wrapper,
+                                                            property,
+                                                            onboard.contract_id,
+                                                            onboard.group_id,
+                                                            version=onboard.updated_property_version,
+                                                            network='PRODUCTION',
+                                                            emailList=onboard.notification_emails,
+                                                            notes='Onboard CLI Activation')
+        prod_act_id = act[0]['activationId'] if len(fail) == 0 else fail[0]['activationId']
+
+    # Create WAF version, Update WAF match target
+    print('\n\n')
+    util_waf = utility_waf.wafFunctions()
     logger.warning('Updating Security Config')
     logger.debug(f'Trying to create new version for WAF configuration: {onboard.waf_config_name}')
-    create_waf_version = util_waf.createWafVersion(wrapper, onboard, notes=onboard.version_notes)
-    wrapper.update_waf_config_version_note(onboard, notes=onboard.version_notes)
-    if create_waf_version is False:
+    if not util_waf.createWafVersion(wrapper, onboard, notes=onboard.version_notes):
         sys.exit()
 
-    # Update WAF match target
+    wrapper.update_waf_config_version_note(onboard, notes=onboard.version_notes)
     modify_matchtarget = util_waf.updateMatchTargetPaths(wrapper, list(map(lambda x: x['path_match'], onboard.paths)),
                                                          onboard.onboard_waf_config_id,
                                                          onboard.onboard_waf_config_version,
@@ -1074,66 +1093,23 @@ def custom(config, **kwargs):
         logger.info(f"Successfully added {list(map(lambda x: x['path_match'], onboard.paths))} to WAF Configuration Match Target")
     else:
         sys.exit(logger.error('Unable to update match target in WAF Configuration'))
-
     print()
-    if not onboard.activate_property_staging:
-        logger.info('Activate Property Staging: SKIPPING')
-    else:
-        status = util_papi.activate_and_poll(wrapper,
-                                             onboard.property_name,
-                                             onboard.contract_id,
-                                             onboard.group_id,
-                                             property_rule_tree['propertyId'],
-                                             version=onboard.updated_property_version,
-                                             network='STAGING',
-                                             emailList=onboard.notification_emails,
-                                             notes='Onboard CLI Activation')
-        if not status:
-            lg._log_exception(msg='Unable to activate property to staging network')
-
-        if not onboard.activate_waf_policy_staging:
-            logger.info('Activate Security configuration on STAGING')
-        else:
-            status = util_waf.activateAndPoll(wrapper, onboard, network='STAGING')
-            if not status:
-                sys.exit()
-
-    print()
-    if not onboard.activate_property_production:
-        logger.info('Activate Property Production: SKIPPING')
-    else:
-        status = util_papi.activate_and_poll(wrapper,
-                                            onboard.property_name,
-                                            onboard.contract_id,
-                                            onboard.group_id,
-                                            property_rule_tree['propertyId'],
-                                            version=onboard.updated_property_version,
-                                            network='PRODUCTION',
-                                            emailList=onboard.notification_emails,
-                                            notes='Onboard CLI Activation')
-        if not status:
-            logger.error('Unable to activate property to production network')
-        else:
-            if not onboard.activate_waf_policy_production:
-                logger.info('Activate Security configuration on PRODUCTION')
-            else:
-                status = util_waf.activateAndPoll(wrapper, onboard, network='PRODUCTION')
-                if not status:
-                    sys.exit()
+    util_waf.activateAndPoll(wrapper, onboard, network='STAGING') if onboard.activate_waf_staging and staging_act_id else logger.warning('SKIP - Activate Security configuration on STAGING')
+    util_waf.activateAndPoll(wrapper, onboard, network='PRODUCTION') if onboard.activate_property_production and prod_act_id else logger.warning('SKIP - Activate Security configuration on PRODUCTION')
 
     # cloudlets
-    print()
+    print('\n\n')
     logger.warning('Updating Cloudlet Policy')
-    uc.retrieve_matchrules(cloudlet_policy)
+    uc.retrieve_matchrules(onboard.cloudlet_policy)
     cloudlet_rules = load_json('policy_matchrules.json')
     path_matches = set(list(map(lambda x: x['path_match'], onboard.paths)))
-    new_value = ' '.join(path_matches)
-    logger.debug(new_value)
-    updated_rules = uc.update_phasedrelease_rule(cloudlet_rules, 'Property', new_value)
-    version_number = uc.create_cloudlet_policy_version(cloudlet_policy, updated_rules)
-    uc.activate_policy(cloudlet_policy, version_number)
-
+    updated_rules = uc.update_phasedrelease_rule(cloudlet_rules, 'Property', new_value=' '.join(path_matches))
+    version_number = uc.create_cloudlet_policy_version(onboard.cloudlet_policy, updated_rules)
     print()
+    uc.activate_policy(onboard, version_number, network='STAGING')
+    uc.activate_policy(onboard, version_number, network='PRODUCTION')
+
+    print('\n\n')
     end_time = time.perf_counter()
     elapse_time = str(strftime('%H:%M:%S', gmtime(end_time - start_time)))
     logger.info(f'TOTAL DURATION: {elapse_time}, End Akamai CLI onboard')

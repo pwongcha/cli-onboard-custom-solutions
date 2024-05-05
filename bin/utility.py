@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import time
+from copy import deepcopy
 from shutil import which
 from time import gmtime
 from time import strftime
@@ -860,6 +861,10 @@ class utility:
                         logger.error(f'{onboard.waf_match_target_id}{space:>{column_width - len(str(onboard.waf_match_target_id))}}invalid waf_match_target_id')
                         count += 1
 
+        if len(onboard.paths) == 0:
+            count += 1
+            logger.error('rulename cannot be empty.  please check path column in input CSV file')
+
         if count == 0:
             self.valid = True
         else:
@@ -1402,9 +1407,9 @@ class utility:
 
         return (propertyJson, hostnameList)
 
-    def csv_2_path_array(self, onboard_object) -> list:
+    def csv_2_path_array(self, filepath: str) -> list:
         paths = []
-        with open(onboard_object.csv_loc, encoding='utf-8-sig', newline='') as f:
+        with open(filepath, encoding='utf-8-sig', newline='') as f:
             for _, row in enumerate(csv.DictReader(f), 1):
                 path = row['path']
                 pattern = r'/([^/-]+)-'
@@ -1748,8 +1753,8 @@ class utility:
 
         return show_df
 
-    def env_validator(self, onboard_object) -> dict:
-        with open(onboard_object.env_loc) as f:
+    def env_validator(self, filepath: str) -> dict:
+        with open(filepath) as f:
             env_details = json.load(f)
         return env_details
 
@@ -1777,12 +1782,11 @@ class utility:
 
         loc = onboard.ruletree_rules_loc.replace('.name', '')
         full_ruleset = self.get_full_behavior_by_jsonpath(ruletree, loc)
-
+        logger.warning(f'Created new {len(onboard.paths)} rules')
         for rule in onboard.paths:
-
             json_to_add = self.generate_custom_rule_json(cpcode[rule['rulename']], rule['path_match'], rule['rulename'])
             full_ruleset['children'].append(json_to_add)
-            logger.info(f"Created new rule for {rule['rulename']:<20}: {rule['path_match']}")
+            logger.info(f"{rule['rulename']:<20} {rule['path_match']}")
 
         full_ruleset = sorted(full_ruleset['children'], key=lambda x: x['name'])
 
@@ -1881,12 +1885,13 @@ class utility:
             'comments': f'RARE-JIRA: Add Curated property {rulename.upper()}'
         })
 
-    def check_existing_custom_rules(self, onboard, ruletree):
+    def check_existing_custom_rules(self, onboard, ruletree) -> list:
         loc = onboard.ruletree_rules_loc.replace('.name', '')
         full_ruleset = self.get_full_behavior_by_jsonpath(ruletree, loc)
         input_rule_names = set(list(map(lambda x: x['rulename'], onboard.paths)))
         existing_rule_names = set(list(map(lambda x: x['name'], full_ruleset['children'])))
-        return list(existing_rule_names.intersection(input_rule_names))
+        duplicated = sorted(list(existing_rule_names.intersection(input_rule_names)))
+        return duplicated
 
 
 class Cloudlets:
@@ -1894,6 +1899,24 @@ class Cloudlets:
         self.account_key = config.account_key
         self.section = config.section
         self.policy_name = None
+
+    def split_into_chunks(self, match_value, new_value, limit: int):
+        data = match_value.split(' ')
+        new_values = new_value.split(' ')
+        data.extend(new_values)
+        sorted_paths = sorted(data)
+        chunks = []
+        current_chunk = ''
+        for i, value in enumerate(sorted_paths):
+            if len(current_chunk) + len(value) + 1 <= limit:
+                current_chunk += f'{value} '
+            else:
+                chunks.append(current_chunk.strip())
+                current_chunk = f'{value} '
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+
+        return chunks
 
     def validate_cloudlet_policy(self, policy: str) -> bool:
         cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'
@@ -1950,14 +1973,22 @@ class Cloudlets:
                 logger.info(f'cloudlet new version number: v{version_number}')
         return version_number
 
-    def activate_policy(self, policy: str, version: int):
-        cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'
-        cmd = f'{cmd} activate --policy {policy} --network staging --version {version}'
-        command = cmd.split(' ')
-        logger.debug(cmd)
-        act_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        stdout, stderr = act_cloudlet_cli.communicate()
-        print(stdout.decode('utf-8'))
+    def activate_policy(self, onboard, version: int, network: str):
+        if network == 'STAGING':
+            activation = onboard.activate_cloudlet_staging
+        else:
+            activation = onboard.activate_cloudlet_production
+
+        if not activation:
+            logger.warning(f'SKIP - Activate Cloudlet on {network.upper()}')
+        else:
+            cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'
+            cmd = f'{cmd} activate --policy {onboard.cloudlet_policy} --network staging --version {version}'
+            command = cmd.split(' ')
+            logger.debug(cmd)
+            act_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            stdout, stderr = act_cloudlet_cli.communicate()
+            print(stdout.decode('utf-8'))
 
     def update_phasedrelease_rule(self,
                                   rules: dict,
@@ -1988,25 +2019,30 @@ class Cloudlets:
                 elements = len(xs)
                 msg = f'{name:<30} {match_operator:<10}'
                 options = f'{str(negative_match):<10} {match_type:<8}  {origin:<25} {percent}'
-                logger.debug(f'{i:>3}.{j} {msg} {elements:<5} {str_count:<10} {options}')
+                logger.info(f'{i:>3}.{j} {msg} {elements:<5} {str_count:<10} {options}')
 
-                if negative_match:
-                    if len(match_value) > 8000:
-                        original_property.append(element)
-                    else:
-                        if not match_value[0].startswith('/en/hotel/'):
-                            original_property.append(element)
-                        else:
-                            match_value = f'{match_value} {new_value}'
-                            element['matchValue'] = match_value
-                            original_property.append(element)
-                else:
+                LIMIT = 8000
+                if not negative_match:
                     original_property.append(element)
+                else:
+                    if not match_value.startswith('/en/hotels/'):
+                        original_property.append(element)
+                        continue
+
+                    if len(match_value) > LIMIT:
+                        original_property.append(element)
+                        continue
+
+                    chunks = self.split_into_chunks(match_value, new_value, LIMIT)
+                    for chunk in chunks:
+                        ex = deepcopy(element)
+                        ex['matchValue'] = chunk
+                        original_property.append(ex)
 
         logger.warning(f"Number of condition for rule {rulename} before/after: {len(match_rules[index]['matches'])}/{len(original_property)}")
         match_rules[index]['matches'] = original_property
         for i, match in enumerate(match_rules[index]['matches']):
             str_count = len(match['matchValue'])
-            logger.debug(f'{i:<3} {str_count:<10}')
+            logger.info(f'{i:<3} {str_count:<10}')
 
         return match_rules

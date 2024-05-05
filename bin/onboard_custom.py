@@ -5,31 +5,27 @@ from pathlib import Path
 
 
 class Onboard:
-    def __init__(self, config, click_args):
+    def __init__(self, config, click_args: dict, util):
         try:
             self.version_notes = 'adding paths via cli'
             self.property_name = []
             self.csv_loc = self.get_actual_location(click_args['csv'])
             self.env_loc = self.get_actual_location(click_args['env'])
+            self.env_details = util.env_validator(self.env_loc)
             self.build_env = click_args['build_env']
             self.valid_csv = True
             self.valid_env = True
-            self.paths = []
+            self.paths = util.csv_2_path_array(self.csv_loc)
             self.property_version = click_args['property_version']
-            self.activate_property_staging = False
-            self.activate_waf_policy_staging = False
-            self.activate_property_production = False
-            self.activate_waf_policy_production = False
+            self.cloudlet_policy = self.env_details[self.build_env]['cloudlet_policy']
 
-            if 'delivery-staging' in click_args['activate']:
-                self.activate_property_staging = True
-            if 'waf-staging' in click_args['activate']:
-                self.activate_waf_policy_staging = True
+            self.activate_property_staging = self.env_details[self.build_env]['activate_property_staging']
+            self.activate_waf_staging = self.env_details[self.build_env]['activate_waf_staging']
+            self.activate_cloudlet_staging = self.env_details[self.build_env]['activate_cloudlet_staging']
 
-            if 'delivery-production' in click_args['activate']:
-                self.activate_property_production = True
-            if 'waf-production' in click_args['activate']:
-                self.activate_waf_policy_production = True
+            self.activate_property_production = self.env_details[self.build_env]['activate_property_production']
+            self.activate_waf_production = self.env_details[self.build_env]['activate_waf_production']
+            self.activate_cloudlet_production = self.env_details[self.build_env]['activate_cloudlet_production']
 
             if click_args['email']:
                 self.notification_emails = click_args['email']

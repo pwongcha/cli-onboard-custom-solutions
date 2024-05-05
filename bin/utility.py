@@ -8,8 +8,6 @@ import shutil
 import subprocess
 import sys
 import time
-from copy import deepcopy
-from pathlib import Path
 from shutil import which
 from time import gmtime
 from time import strftime
@@ -1895,11 +1893,26 @@ class Cloudlets:
     def __init__(self):
         pass
 
+    def validate_cloudlet_policy(self, config, policy: str) -> bool:
+        cmd = f'akamai cloudlets -a {config.account_key} -s {config.section}'
+        cmd = f'{cmd} status --policy {policy}'
+        command = cmd.split(' ')
+        print()
+        logger.warning('Validating cloudlet policy')
+        childprocess = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=False)
+        stdout, stderr = childprocess.communicate()
+        if 'ERROR: Unable to find existing policy' in stdout.decode('utf-8'):
+            logger.error(f'Unable to find existing policy {policy}')
+            return False
+        else:
+            print(stdout.decode('utf-8'))
+            return True
+
     def update_phasedrelease_rule(self,
-                                   rules: dict,
-                                   rulename: str,
-                                   new_value: str,
-                                   matchon_type: str | None = None):
+                                  rules: dict,
+                                  rulename: str,
+                                  new_value: str,
+                                  matchon_type: str | None = None):
 
         original_property = []
         index = 0

@@ -978,7 +978,7 @@ def appsec_create(config, contract_id, group_id, by, activate, csv, email):
 
 @cli.command(short_help='Custom solution')
 @click.option('--csv', metavar='', required=True, help='csv file with headers "path,propertyName"')
-@click.option('--env', metavar='', help='environment JSON file', required=True, default='prod', show_default=True)
+@click.option('--env', metavar='', help='environment JSON file', required=True)
 @click.option('--build-env', metavar='', help='environment to build', required=True, default='dev', show_default=True)
 @click.option('--property-version', metavar='', default='prod', show_default=True,
               help='property version to build from network.  options: prod, staging, latest, or numeric value')
@@ -1021,11 +1021,18 @@ def custom(config, **kwargs):
         property_rule_tree = util_papi.custom_property_version(onboard, wrapper, util)
         paths_already_exist = util.check_existing_custom_rules(onboard, property_rule_tree['rules'])
         if paths_already_exist:
-            logger.info(f'{len(paths_already_exist)} path rules already exist.')
-            for path in paths_already_exist:
-                logger.info(path)
-            sys.exit(logger.error('please review and rerun'))
+            logger.error(f'{len(paths_already_exist)} path rules already exist.')
+            for i, path in enumerate(paths_already_exist, 1):
+                logger.info(f'    {i}. {path}')
 
+    # validation cloudlet policy exists
+    uc = utility.Cloudlets()
+    cloudlet_policy = onboard.env_details[onboard.build_env]['cloudlet_policy']
+    if not uc.validate_cloudlet_policy(config, cloudlet_policy):
+        print()
+        sys.exit(logger.error('please review all errors and rerun'))
+
+    # continue if --dryrun is False
     if kwargs['dryrun']:
         sys.exit()
 
@@ -1140,10 +1147,9 @@ def custom(config, **kwargs):
         json.dump(updated_rules, f, indent=4)
 
     cmd = f'akamai cloudlets -a {config.account_key} -s {config.section}'
-    cmd = f'{cmd} update --policy {policy} --file policy_matchrules_updated.json'
+    cmd = f'{cmd} update --policy {cloudlet_policy} --file policy_matchrules_updated.json'
     command = cmd.split(' ')
-    print()
-    logger.critical(cmd)
+    logger.debug(cmd)
     update_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     stdout, stderr = update_cloudlet_cli.communicate()
 
@@ -1159,10 +1165,9 @@ def custom(config, **kwargs):
             logger.info(f'cloudlet new version number: v{version_number}')
 
     cmd = f'akamai cloudlets -a {config.account_key} -s {config.section}'
-    cmd = f'{cmd} activate --policy {policy} --network staging --version {version_number}'
+    cmd = f'{cmd} activate --policy {cloudlet_policy} --network staging --version {version_number}'
     command = cmd.split(' ')
-    print()
-    logger.critical(cmd)
+    logger.debug(cmd)
     act_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     stdout, stderr = act_cloudlet_cli.communicate()
     print(stdout.decode('utf-8'))

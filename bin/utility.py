@@ -1782,7 +1782,7 @@ class utility:
 
             json_to_add = self.generate_custom_rule_json(cpcode[rule['rulename']], rule['path_match'], rule['rulename'])
             full_ruleset['children'].append(json_to_add)
-            logger.info(f"Created new rule for {rule['rulename']}: {rule['path_match']}")
+            logger.info(f"Created new rule for {rule['rulename']:<20}: {rule['path_match']}")
 
         full_ruleset = sorted(full_ruleset['children'], key=lambda x: x['name'])
 
@@ -1890,11 +1890,13 @@ class utility:
 
 
 class Cloudlets:
-    def __init__(self):
-        pass
+    def __init__(self, config):
+        self.account_key = config.account_key
+        self.section = config.section
+        self.policy_name = None
 
-    def validate_cloudlet_policy(self, config, policy: str) -> bool:
-        cmd = f'akamai cloudlets -a {config.account_key} -s {config.section}'
+    def validate_cloudlet_policy(self, policy: str) -> bool:
+        cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'
         cmd = f'{cmd} status --policy {policy}'
         command = cmd.split(' ')
         print()
@@ -1906,7 +1908,56 @@ class Cloudlets:
             return False
         else:
             print(stdout.decode('utf-8'))
+            self.policy_name = policy
             return True
+
+    def retrieve_matchrules(self, policy: str) -> bool:
+        cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'
+        cmd = f'{cmd} retrieve --only-match-rules --json --policy {policy}'
+        command = cmd.split(' ')
+        print()
+        logger.debug(cmd)
+        childprocess = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=False)
+        stdout, stderr = childprocess.communicate()
+        if 'policy_matchrules.json' not in stdout.decode('utf-8'):
+            sys.exit(logger.info(stdout.decode('utf-8')))
+        return True
+
+    def create_cloudlet_policy_version(self, policy: str, new_rule: dict) -> int:
+        updated_rules = {}
+        updated_rules['matchRuleFormat'] = '1.0'
+        updated_rules['matchRules'] = new_rule
+
+        with open('policy_matchrules_updated.json', 'w') as f:
+            json.dump(updated_rules, f, indent=4)
+
+        cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'
+        cmd = f'{cmd} update --policy {policy} --file policy_matchrules_updated.json'
+        command = cmd.split(' ')
+        logger.debug(cmd)
+        update_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        stdout, stderr = update_cloudlet_cli.communicate()
+        version_number = 0
+        if 'new version ' not in stdout.decode('utf-8'):
+            sys.exit(logger.error(stdout.decode('utf-8')))
+        else:
+            create_output = stdout.decode('utf-8')
+            logger.debug(create_output)
+            pattern = r'version (\d+)'
+            match = re.search(pattern, create_output)
+            if match:
+                version_number = match.group(1)
+                logger.info(f'cloudlet new version number: v{version_number}')
+        return version_number
+
+    def activate_policy(self, policy: str, version: int):
+        cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'
+        cmd = f'{cmd} activate --policy {policy} --network staging --version {version}'
+        command = cmd.split(' ')
+        logger.debug(cmd)
+        act_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        stdout, stderr = act_cloudlet_cli.communicate()
+        print(stdout.decode('utf-8'))
 
     def update_phasedrelease_rule(self,
                                   rules: dict,

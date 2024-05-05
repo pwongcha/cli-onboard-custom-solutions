@@ -1026,9 +1026,9 @@ def custom(config, **kwargs):
                 logger.info(f'    {i}. {path}')
 
     # validation cloudlet policy exists
-    uc = utility.Cloudlets()
+    uc = utility.Cloudlets(config)
     cloudlet_policy = onboard.env_details[onboard.build_env]['cloudlet_policy']
-    if not uc.validate_cloudlet_policy(config, cloudlet_policy):
+    if not uc.validate_cloudlet_policy(cloudlet_policy):
         print()
         sys.exit(logger.error('please review all errors and rerun'))
 
@@ -1036,6 +1036,7 @@ def custom(config, **kwargs):
     if kwargs['dryrun']:
         sys.exit()
 
+    logger.warning('Updating Delivery Config')
     # create new cpcode for each path
     cpcodes = {}
     for path in onboard.paths:
@@ -1122,55 +1123,15 @@ def custom(config, **kwargs):
 
     # cloudlets
     print()
-    policy = onboard.env_details['dev']['cloudlet_policy']
-    cmd = f'akamai cloudlets -a {config.account_key} -s {config.section}'
-    cmd = f'{cmd} retrieve --only-match-rules --json --policy {policy}'
-    command = cmd.split(' ')
-    print()
-    logger.critical(cmd)
-    childprocess = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=False)
-    stdout, stderr = childprocess.communicate()
-    if 'policy_matchrules.json' not in stdout.decode('utf-8'):
-        sys.exit(logger.info(stderr))
-
-    uc = utility.Cloudlets()
+    logger.warning('Updating Cloudlet Policy')
+    uc.retrieve_matchrules(cloudlet_policy)
     cloudlet_rules = load_json('policy_matchrules.json')
     path_matches = set(list(map(lambda x: x['path_match'], onboard.paths)))
     new_value = ' '.join(path_matches)
     logger.debug(new_value)
-    updated_rules = {}
-    rules = uc.update_phasedrelease_rule(cloudlet_rules, 'Property', new_value)
-    updated_rules['matchRuleFormat'] = '1.0'
-    updated_rules['matchRules'] = rules
-
-    with open('policy_matchrules_updated.json', 'w') as f:
-        json.dump(updated_rules, f, indent=4)
-
-    cmd = f'akamai cloudlets -a {config.account_key} -s {config.section}'
-    cmd = f'{cmd} update --policy {cloudlet_policy} --file policy_matchrules_updated.json'
-    command = cmd.split(' ')
-    logger.debug(cmd)
-    update_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    stdout, stderr = update_cloudlet_cli.communicate()
-
-    if 'new version ' not in stdout.decode('utf-8'):
-        sys.exit(logger.error(stdout.decode('utf-8')))
-    else:
-        create_output = stdout.decode('utf-8')
-        logger.debug(create_output)
-        pattern = r'version (\d+)'
-        match = re.search(pattern, create_output)
-        if match:
-            version_number = match.group(1)
-            logger.info(f'cloudlet new version number: v{version_number}')
-
-    cmd = f'akamai cloudlets -a {config.account_key} -s {config.section}'
-    cmd = f'{cmd} activate --policy {cloudlet_policy} --network staging --version {version_number}'
-    command = cmd.split(' ')
-    logger.debug(cmd)
-    act_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    stdout, stderr = act_cloudlet_cli.communicate()
-    print(stdout.decode('utf-8'))
+    updated_rules = uc.update_phasedrelease_rule(cloudlet_rules, 'Property', new_value)
+    version_number = uc.create_cloudlet_policy_version(cloudlet_policy, updated_rules)
+    uc.activate_policy(cloudlet_policy, version_number)
 
     print()
     end_time = time.perf_counter()

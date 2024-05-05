@@ -815,11 +815,11 @@ class utility:
             if onboard.waf_config_name == '':
                 count += 1
                 logger.error(f'{onboard.waf_config_name}{space:>{column_width - len(onboard.waf_config_name)}}invalid waf_config_name, not found')
-            else:
-                waf_config_detail = self.getWafConfigIdByName(papi, onboard.waf_config_name)
-                if not waf_config_detail['Found']:
-                    count += 1
-                    logger.error(f'{onboard.waf_config_name}{space:>{column_width - len(onboard.waf_config_name)}}invalid waf_config_name, not found')
+
+            waf_config_detail = self.getWafConfigIdByName(papi, onboard.waf_config_name)
+            if not waf_config_detail['Found']:
+                count += 1
+                logger.error(f'{onboard.waf_config_name}{space:>{column_width - len(onboard.waf_config_name)}}invalid waf_config_name, not found')
 
             if waf_config_detail['Found']:
                 onboard.onboard_waf_config_id = waf_config_detail['details']['id']
@@ -1925,14 +1925,14 @@ class Cloudlets:
         print()
         logger.warning('Validating cloudlet policy')
         childprocess = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=False)
-        stdout, stderr = childprocess.communicate()
-        if 'ERROR: Unable to find existing policy' in stdout.decode('utf-8'):
-            logger.error(f'Unable to find existing policy {policy}')
-            return False
-        else:
-            print(stdout.decode('utf-8'))
+        stdout, _ = childprocess.communicate()
+        if 'Found policy-id' in stdout.decode('utf-8'):
             self.policy_name = policy
+            logger.info(stdout.decode('utf-8'))
             return True
+
+        logger.error(f'Unable to find existing policy {policy}')
+        return False
 
     def retrieve_matchrules(self, policy: str) -> bool:
         cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'

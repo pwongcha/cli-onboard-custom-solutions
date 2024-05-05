@@ -47,6 +47,7 @@ This CLI has 4 command types for onboarding new properties:
 - [appsec-policy](#appsec-policy)
 - [appsec-create](#appsec-create)
 - [appsec-update](#appsec-update)
+- [custom](#custom)
 
 # create
 
@@ -538,6 +539,39 @@ www.example-3.com,2222222
 - 2 hostnames will be added to WAF match target id `1111111` on security configuration id `9999`
 - 1 hostname will be added to WAF match target id `2222222` on security configuration id `9999`
 </details>
+
+# custom
+
+Update delivery config + cloudlet policy + waf
+
+```bash
+Options:
+  --csv                csv file with headers "path,propertyName"  [required]
+  --env                environment JSON file  [required]
+  --build-env          environment to build  [default: dev; required]
+  --property-version   property version to build from network.  options: prod,
+                       staging, latest, or numeric value  [default: prod]
+  --email              email(s) for activation notifications
+  --use-cpcode         override creating new cpcode for each new path, provide
+                       valid existing numeric value
+
+```
+
+```mermaid
+flowchart LR
+    A[fill environment detail into JSON file] --> B[populate paths into CSV file]
+    B-->C[run akamai onboard custom]
+```
+
+### Usage
+
+```bash
+
+akamai onboard custom --env environments.json --csv batch-create.csv --build-env prod
+
+akamai onboard custom --env environments.json --csv batch-create.csv --build-env dev \
+    --property-version staging --use-cpcode 111111 --dryrun
+```
 
 # Contribution
 

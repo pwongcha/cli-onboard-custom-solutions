@@ -577,7 +577,7 @@ akamai onboard custom --env environments.json --csv batch-create.csv --build-env
 
 By submitting a contribution (the “Contribution”) to this project, and for good and valuable consideration, the receipt and sufficiency of which are hereby acknowledged, you (the “Assignor”) irrevocably convey, transfer, and assign the Contribution to the owner of the repository (the “Assignee”), and the Assignee hereby accepts, all of your right, title, and interest in and to the Contribution along with all associated copyrights, copyright registrations, and/or applications for registration and all issuances, extensions and renewals thereof (collectively, the “Assigned Copyrights”). You also assign all of your rights of any kind whatsoever accruing under the Assigned Copyrights provided by applicable law of any jurisdiction, by international treaties and conventions and otherwise throughout the world.
 
-## Local Install
+## Local Contribution
 
 - Minimum python 3.6 `git clone https://github.com/akamai/cli-onboard.git  `
 - cd into cli-onboard directory `cd cli-onboard`
@@ -587,6 +587,17 @@ By submitting a contribution (the “Contribution”) to this project, and for g
 - Install pre-commit hook `pre-commit install`
 - If testing another branch i.e `shared-policy` run `git checkout -b shared-policy`
 - Verify as Akamai CLI, first uninstall existing version `akamai uninstall onboard`
+- Install from local repo
+  - Run `pwd` to get current directory i.e `/Users/Documents/cli-onboard`
+    - For MAC OS, run `akamai install file:///Users/Documents/cli-onboard`
+      - Please note there is 3 slashes
+    - For Window, run `akamai install file://C:/Users/sample/cli-onboard`
+      - Only 2 slashes
+
+## Local Install
+
+- Verify as Akamai CLI, first uninstall existing version `akamai uninstall onboard`
+- Run `git init`
 - Install from local repo
   - Run `pwd` to get current directory i.e `/Users/Documents/cli-onboard`
     - For MAC OS, run `akamai install file:///Users/Documents/cli-onboard`

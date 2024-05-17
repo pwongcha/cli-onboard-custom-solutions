@@ -1998,6 +1998,7 @@ class Cloudlets:
                                   matchon_type: str | None = None):
 
         original_property = []
+        update = False
         index = 0
         match_rules = rules['matchRules']
         for i, rule in enumerate(match_rules):
@@ -2036,7 +2037,7 @@ class Cloudlets:
 
                     print()
                     chunks = self.split_into_chunks(match_value, new_value, LIMIT)
-                    update = False
+
                     for chunk in chunks:
                         ex = deepcopy(element)
                         ex['matchValue'] = chunk

@@ -3,14 +3,37 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from exceptions import setup_logger
+
+logger = setup_logger()
+
 
 class Onboard:
     def __init__(self, config, click_args: dict, util):
+
+        # Read config object that contains the command line parameters
+        if not config.edgerc:
+            if not os.getenv('AKAMAI_EDGERC'):
+                self.edgerc = os.path.join(os.path.expanduser('~'), '.edgerc')
+            else:
+                self.edgerc = os.getenv('AKAMAI_EDGERC')
+        else:
+            self.edgerc = config.edgerc
+
+        if not config.section:
+            if not os.getenv('AKAMAI_EDGERC_SECTION'):
+                self.section = 'onboard'
+            else:
+                self.section = os.getenv('AKAMAI_EDGERC_SECTION')
+        else:
+            self.section = config.section
+
         try:
             self.version_notes = 'adding paths via cli'
             self.property_name = []
             self.csv_loc = self.get_actual_location(click_args['csv'])
             self.env_loc = self.get_actual_location(click_args['env'])
+
             self.env_details = util.env_validator(self.env_loc)
             self.build_env = click_args['build_env']
             self.valid_csv = True
@@ -34,26 +57,8 @@ class Onboard:
 
             self.version_notes = 'Created using Onboard CLI'
 
-            # Read config object that contains the command line parameters
-            if not config.edgerc:
-                if not os.getenv('AKAMAI_EDGERC'):
-                    self.edgerc = os.path.join(os.path.expanduser('~'), '.edgerc')
-                else:
-                    self.edgerc = os.getenv('AKAMAI_EDGERC')
-            else:
-                self.edgerc = config.edgerc
-
-            if not config.section:
-                if not os.getenv('AKAMAI_EDGERC_SECTION'):
-                    self.section = 'onboard'
-                else:
-                    self.section = os.getenv('AKAMAI_EDGERC_SECTION')
-            else:
-                self.section = config.section
-
         except KeyError as k:
-            print('\nMissing argument ' + str(k))
-            exit(-1)
+            exit(logger.error('Invalid argument/value ' + str(k)))
 
     def get_actual_location(self, file_location: str) -> str:
         abs_file_location = file_location
@@ -62,4 +67,7 @@ class Onboard:
             file_location = file_location.replace('~', '')
             abs_file_location = f'{home}/{file_location}'
 
-        return abs_file_location
+        if Path(abs_file_location).is_file():
+            return abs_file_location
+        else:
+            exit(logger.error(f'File not found {abs_file_location}'))

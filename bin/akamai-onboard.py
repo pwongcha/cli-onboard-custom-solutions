@@ -133,13 +133,18 @@ def fetch_sample_templates():
     """
     Retrieve sample templates for available commands
     """
-    source_folder = Path(root, 'templates', 'sample_setup_files')
-    Path('sample_templates').mkdir(parents=True, exist_ok=True)
-    target_folder = Path().resolve()
-    target_folder = Path(target_folder, 'sample_templates')
+    folders = ['sample_setup_files', 'sample_custom']
+    for folder in folders:
+        source_folder = Path(root, 'templates', folder)
+        if not source_folder.is_dir():
+            print(f'Invalid source directory: {source_folder}')
+        else:
+            Path('sample_templates').mkdir(parents=True, exist_ok=True)
+            target_folder = Path().resolve()
+            target_folder = Path(target_folder, 'sample_templates')
 
-    copytree(source_folder, target_folder, dirs_exist_ok=True)
-    logger.info(f'Sample templates can be found in directory {target_folder}')
+            copytree(source_folder, target_folder, dirs_exist_ok=True)
+            logger.info(f'Sample templates can be found in directory {target_folder}')
 
 
 @cli.command(short_help='Create a delivery configuration with mutltiple hostnames and security configuration with one WAF policy')

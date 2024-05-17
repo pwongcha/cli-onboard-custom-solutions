@@ -1409,16 +1409,18 @@ class utility:
 
     def csv_2_path_array(self, filepath: str) -> list:
         paths = []
-        with open(filepath, encoding='utf-8-sig', newline='') as f:
-            for _, row in enumerate(csv.DictReader(f), 1):
-                path = row['path']
-                pattern = r'/([^/-]+)-'
-                match = re.search(pattern, path)
-                if match:
-                    value_before_hyphen = match.group(1)
-                    paths.append({'path_match': row['path'],
-                                  'rulename': value_before_hyphen.upper()})
-
+        try:
+            with open(filepath, encoding='utf-8-sig', newline='') as f:
+                for _, row in enumerate(csv.DictReader(f), 1):
+                    path = row['path']
+                    pattern = r'/([^/-]+)-'
+                    match = re.search(pattern, path)
+                    if match:
+                        value_before_hyphen = match.group(1)
+                        paths.append({'path_match': row['path'],
+                                      'rulename': value_before_hyphen.upper()})
+        except FileNotFoundError as err:
+            logger.error(err)
         return paths
 
     def validate_group_id(self, onboard, groups) -> None:
@@ -1754,8 +1756,12 @@ class utility:
         return show_df
 
     def env_validator(self, filepath: str) -> dict:
-        with open(filepath) as f:
-            env_details = json.load(f)
+        env_details = {}
+        try:
+            with open(filepath) as f:
+                env_details = json.load(f)
+        except FileNotFoundError as err:
+            logger.error(err)
         return env_details
 
     def search_for_json_rule_by_name(self, data, target_key, target_value, path='', paths=None):

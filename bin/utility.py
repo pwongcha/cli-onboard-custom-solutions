@@ -2036,13 +2036,15 @@ class Cloudlets:
 
                     print()
                     chunks = self.split_into_chunks(match_value, new_value, LIMIT)
+                    update = False
                     for chunk in chunks:
                         ex = deepcopy(element)
                         ex['matchValue'] = chunk
                         original_property.append(ex)
                         logger.info(f'Update criteria {i:>3}.{j} elements {len(chunk)}')
+                        update = True
 
-        if len(original_property) > len(match_rules[index]['matches']):
+        if update:
             msg = f"{len(match_rules[index]['matches'])}/{len(original_property)}"
             logger.warning(f'Number of condition for rule {rulename} before/after: {msg}')
             print()

@@ -9,4 +9,6 @@
 sample_templates
 .sh
 *.csv
+*.json
 !templates/**/*.csv
+output

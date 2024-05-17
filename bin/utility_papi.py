@@ -9,9 +9,11 @@ from pathlib import Path
 from time import gmtime
 from time import strftime
 
+import utility
 from exceptions import setup_logger
+from onboard_custom import Onboard
 from poll import pollActivation
-
+from wrapper_api import apiCallsWrapper
 logger = setup_logger()
 
 
@@ -27,7 +29,10 @@ class papiFunctions:
         act_response = wrapper_object.activateConfiguration(contract_id, group_id, property_id,
                                                             version, network, emailList, notes)
         logger.debug(act_response.json())
-        if act_response.status_code == 201:
+        if not act_response.status_code:
+            logger.error(json.dumps(act_response.json(), indent=4))
+            return False
+        else:
             activation_status = False
             activation_id = act_response.json()['activationLink'].split('?')[0].split('/')[-1]
             while activation_status is False:
@@ -36,7 +41,11 @@ class papiFunctions:
                                                                                  group_id,
                                                                                  property_id,
                                                                                  activation_id)
-                if activation_status_response.status_code == 200:
+                if not activation_status_response.ok:
+                    logger.error(json.dumps(activation_status_response.json(), indent=4))
+                    logger.error('Unable to get activation status')
+                    return False
+                else:
                     for each_activation in activation_status_response.json()['activations']['items']:
                         if each_activation['activationId'] == activation_id:
                             if network in each_activation['network']:
@@ -45,7 +54,7 @@ class papiFunctions:
                                 elif each_activation['status'] == 'ACTIVE':
                                     end_time = time.perf_counter()
                                     elapse_time = str(strftime('%H:%M:%S', gmtime(end_time - start_time)))
-                                    msg = f'Successfully activated property {property_name} v1 on Akamai {network} network'
+                                    msg = f'Successfully activated property {property_name} v{version} on Akamai {network} network'
                                     logger.info(f'Activation Duration: {elapse_time} {msg}')
                                     activation_status = True
                                     return activation_status
@@ -53,13 +62,6 @@ class papiFunctions:
                                     logger.error('Unable to parse activation status')
                                     activation_status = False
                                     return activation_status
-                else:
-                    logger.error(json.dumps(activation_status_response.json(), indent=4))
-                    logger.error('Unable to get activation status')
-                    return False
-        else:
-            logger.error(json.dumps(act_response.json(), indent=4))
-            return False
 
     def batch_activate_and_poll(self, wrapper_object, propertyDict,
                         contract_id, group_id, version,
@@ -85,7 +87,11 @@ class papiFunctions:
         all_properties_active, activationDict = pollActivation(propertyDict, wrapper_object, contract_id, group_id, network)
         failed_activations = (list(filter(lambda x: x['activationStatus'][network] not in ['ACTIVE'], activationDict)))
         successful_activations = (list(filter(lambda x: x['activationStatus'][network] in ['ACTIVE'], activationDict)))
-        success_onboarded_hostnames = (list(map(lambda x: x['hostnames'], successful_activations)))
+        try:
+            success_onboarded_hostnames = (list(map(lambda x: x['hostnames'], successful_activations)))
+        except KeyError:
+            success_onboarded_hostnames = []
+
         success_onboarded_hostnames = [item for sublist in success_onboarded_hostnames for item in sublist]
 
         return (all_properties_active, success_onboarded_hostnames, failed_activations, activationDict)
@@ -434,3 +440,65 @@ class papiFunctions:
         # update template to include origin and cpCode behaviors in default rule if they don't exist
         default_behaviors = templateData['rules']['behaviors']
         onboard_object.level_0_rules = templateData['rules']['children']
+
+    def custom_property_version(self, onboard: Onboard, papi: apiCallsWrapper, util: utility):
+        property_json = papi.get_property_version_ruletree(onboard.property_id,
+                                                           onboard.contract_id,
+                                                           onboard.group_id,
+                                                           onboard.property_version_base)
+        space = ' '
+        column_width = 50
+        empty_space = column_width - len(onboard.property_rule_name)
+        print()
+        logger.warning('Validating rulename')
+        if property_json:
+            matching_rules = util.search_for_json_rule_by_name(property_json['rules'],
+                                                               target_key='name',
+                                                               target_value=onboard.property_rule_name)
+            if matching_rules:
+                if len(matching_rules) > 1:
+                    logger.warning('Warning! More than one rule name matching the input rule name. Using first matching rule')
+                logger.debug(matching_rules[0])
+                onboard.ruletree_rules_loc = matching_rules[0]
+                msg = f'{onboard.property_rule_name}{space:>{empty_space}}rulename found in the property'
+                logger.info(msg)
+                return property_json
+            else:
+                msg = f'{onboard.property_rule_name}{space:>{empty_space}}rulename not found in the property'
+        else:
+            msg = f'{onboard.property_rule_name}{space:>{empty_space}}unable to retrieve property version {onboard.property_version_base}'
+
+        sys.exit(logger.error(msg))
+
+    def update_custom_property(self, onboard: Onboard, papi: apiCallsWrapper, ruleFormat) -> int:
+        """
+        Function with multiple goals:
+            1. Create new property version
+            2. Update the property with template rules define
+        """
+        # Create new version
+        create_resp = papi.create_new_property_version(onboard.property_id,
+                                                       onboard.contract_id,
+                                                       onboard.group_id,
+                                                       onboard.property_version_base)
+        if not create_resp.ok:
+            logger.error(json.dumps(create_resp.json(), indent=4))
+            sys.exit(logger.error('Unable to create property version'))
+        else:
+            print()
+            onboard.updated_property_version = create_resp.json()['versionLink'].split('?')[0].split('/')[-1]
+            logger.warning(f'Created new property version: v{onboard.updated_property_version}')
+
+        # Update Property Rules
+        update_resp = papi.updatePropertyRules(onboard.contract_id,
+                                               onboard.group_id,
+                                               onboard.property_id,
+                                               ruleFormat,
+                                               ruletree=json.dumps({'rules': onboard.updated_property_rule_tree}),
+                                               version=onboard.updated_property_version)
+
+        if not update_resp.ok:
+            logger.error('Unable to update rules for property')
+            sys.exit(logger.error(json.dumps(update_resp.json(), indent=4)))
+
+        return onboard.updated_property_version

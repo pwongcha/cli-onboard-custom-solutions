@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import sys
 import time
-from pathlib import Path
+from copy import deepcopy
 from shutil import which
 from time import gmtime
 from time import strftime
@@ -19,9 +19,11 @@ from cerberus import Validator
 from distutils.dir_util import copy_tree
 from exceptions import get_cli_root_directory
 from exceptions import setup_logger
+from onboard_custom import Onboard
 from pyisemail import is_email
 from rich import print_json
 from tabulate import tabulate
+from wrapper_api import apiCallsWrapper
 
 logger = setup_logger()
 root = get_cli_root_directory()
@@ -61,16 +63,22 @@ class utility:
         """
         Function to execute Linux commands
         """
-        childprocess = subprocess.Popen(command,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT)
+        childprocess = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         stdout, stderr = childprocess.communicate()
         if 'pipeline' in command and 'akamai [global flags]' in str(stdout):
             self.valid = False
+            print()
             logger.error('This program needs akamai CLI module property-manager as a pre-requisite')
             logger.warning('Please install from https://github.com/akamai/cli-property-manager')
             logger.warning('or run >> akamai install property-manager')
-            return self.valid
+
+        if 'cloudlets' in command and 'akamai [global flags]' in str(stdout):
+            self.valid = False
+            print()
+            logger.error('This program needs akamai CLI module cloudlets as a pre-requisite')
+            logger.warning('Please install from https://github.com/akamai/cli-cloudlets')
+            logger.warning('or run >> akamai install cloudlets')
+
         return self.valid
 
     def checkPermissions(self, session, apicalls_wrapper_object):
@@ -696,13 +704,179 @@ class utility:
 
         return self.valid
 
+    def validateCustomSteps(self, onboard: Onboard, papi: apiCallsWrapper) -> bool:
+        """
+        Function to validate the input values of env json and to populate onboard variables
+        """
+        count = 0
+        print()
+        logger.warning('Validating environment file information. Please wait, may take a few moments')
+
+        if onboard.build_env not in onboard.env_details.keys():
+            sys.exit(logger.error(f'{onboard.build_env} is not in environments.json environments'))
+        else:
+            logger.info(f'{onboard.build_env}{space:>{column_width - len(onboard.build_env)}}environment')
+
+        if 'property_name' not in onboard.env_details[onboard.build_env].keys():
+            logger.error(f'property_name{space:>{column_width - len("property_name")}}property name not found in environment file')
+            count += 1
+        else:
+            onboard.property_name = onboard.env_details[onboard.build_env]['property_name']
+            if not papi.property_exists(onboard.property_name):
+                logger.error(f'{onboard.property_name}{space:>{column_width - len(onboard.property_name)}}property name on JSON file does not exist')
+                count += 1
+            else:
+                logger.info(f'{onboard.property_name}{space:>{column_width - len(onboard.property_name)}}property name')
+
+                onboard.property_details = papi.get_property_id(onboard.property_name)
+                if not onboard.property_details:
+                    logger.error(f'{space:>{column_width}}unable to get property details')
+                    count += 1
+                else:
+                    # propertyId, groupId, contractId
+                    onboard.property_id = onboard.property_details[0]['propertyId']
+                    onboard.contract_id = onboard.property_details[0]['contractId']
+                    onboard.group_id = onboard.property_details[0]['groupId']
+                    logger.info(f'{onboard.property_id}{space:>{column_width - len(f"{onboard.property_id}")}}property id')
+                    logger.info(f'{onboard.contract_id}{space:>{column_width - len(f"{onboard.contract_id}")}}contract id')
+                    logger.info(f'{onboard.group_id}{space:>{column_width - len(f"{onboard.group_id}")}}group id')
+
+                    # propertyVersion
+                    onboard.property_latest_version = max(list(map(lambda x: x['propertyVersion'], onboard.property_details)))
+                    try:
+                        onboard.property_staging_version = list(filter(lambda x: x['stagingStatus'] == 'ACTIVE',
+                                                                        onboard.property_details))[0]['propertyVersion']
+                    except IndexError:
+                        onboard.property_staging_version = None
+                    try:
+                        onboard.property_production_version = list(filter(lambda x: x['productionStatus'] == 'ACTIVE',
+                                                                        onboard.property_details))[0]['propertyVersion']
+                    except IndexError:
+                        onboard.property_production_version = None
+
+                    # version summary
+                    empty = (column_width
+                             - len(f'{onboard.property_latest_version}')  # noqa W503
+                             - len(f'{onboard.property_staging_version}')  # noqa W503
+                             - len(f'{onboard.property_production_version}')  # noqa W503
+                             - 5)  # noqa W503
+                    msg_versions = f'v{onboard.property_latest_version}:v{onboard.property_staging_version}:v{onboard.property_production_version}'
+                    logger.info(f'{msg_versions}{space:>{empty}}latest:staging:production version')
+
+                    if onboard.property_version.lower() == 'prod':
+                        onboard.property_version_base = onboard.property_production_version
+                        logger.info(f'v{onboard.property_version_base}{space:>{column_width - 1 - len(f"{onboard.property_version_base}")}}build from version')
+                    elif onboard.property_version.lower() == 'staging':
+                        onboard.property_version_base = onboard.property_staging_version
+                        logger.info(f'v{onboard.property_version_base}{space:>{column_width - 1 - len(f"{onboard.property_version_base}")}}build from version')
+                    elif onboard.property_version.lower() == 'latest':
+                        onboard.property_version_base = onboard.property_latest_version
+                        logger.info(f'v{onboard.property_version_base}{space:>{column_width - 1 - len(f"{onboard.property_version_base}")}}build from version')
+                    else:
+                        try:
+                            onboard.property_version_base = int(onboard.property_version)
+                            if onboard.property_version_base <= 0:
+                                logger.error(f'v{onboard.property_version_base}{space:>{column_width - 2}}invalid property version must be >= 1')
+                                count += 1
+                            elif onboard.property_version_base > onboard.property_latest_version:
+                                logger.error(f'v{onboard.property_version}{space:>{column_width - 1 - len(f"{onboard.property_version}")}}invalid property version')
+                                count += 1
+                            else:
+                                logger.info(f'v{onboard.property_version_base}{space:>{column_width - 1 - len(f"{onboard.property_version_base}")}}build from version')
+                        except (AttributeError, ValueError):
+                            logger.error(f'{onboard.property_version}{space:>{column_width - len(f"{onboard.property_version}")}}invalid property version..must be integer')
+                            count += 1
+                            self.valid = False
+                            return self.valid
+
+                    # productId
+                    onboard.product_id = papi.get_property_version_details(onboard.property_id, onboard.contract_id, onboard.group_id, onboard.property_version_base)
+                    logger.info(f'{onboard.product_id}{space:>{column_width - len(f"{onboard.product_id}")}}product id')
+                    if not onboard.product_id:
+                        count += 1
+                        logger.error(f'{space:>{column_width - 0}}unable to get product id')
+
+            # rulename
+            if 'property_rule_name' not in onboard.env_details[onboard.build_env].keys():
+                logger.error(f'property_rule_name{space:>{column_width - len("property_rule_name")}}not found in environment file')
+                count += 1
+            else:
+                onboard.property_rule_name = onboard.env_details[onboard.build_env]['property_rule_name']
+                if onboard.property_rule_name.strip(' ') == '':
+                    logger.error(f'{onboard.property_rule_name}{space:>{column_width - len(onboard.property_rule_name)}}rule name cannot be empty')
+                    count += 1
+                else:
+                    logger.info(f'{onboard.property_rule_name}{space:>{column_width - len(onboard.property_rule_name)}}rule name to inject into')
+
+            # security
+            onboard.waf_config_name = onboard.env_details[onboard.build_env]['waf_config_name']
+            onboard.waf_policy_name = onboard.env_details[onboard.build_env]['waf_policy_name']
+            onboard.waf_match_target_id = onboard.env_details[onboard.build_env]['waf_match_target_id']
+            if onboard.waf_config_name == '':
+                count += 1
+                logger.error(f'{onboard.waf_config_name}{space:>{column_width - len(onboard.waf_config_name)}}invalid waf_config_name, not found')
+
+            waf_config_detail = self.getWafConfigIdByName(papi, onboard.waf_config_name)
+            if not waf_config_detail['Found']:
+                count += 1
+                logger.error(f'{onboard.waf_config_name}{space:>{column_width - len(onboard.waf_config_name)}}invalid waf_config_name, not found')
+
+            if waf_config_detail['Found']:
+                onboard.onboard_waf_config_id = waf_config_detail['details']['id']
+                onboard.onboard_waf_prev_version = waf_config_detail['details']['latestVersion']
+                if 'productionVersion' in waf_config_detail['details'].keys():
+                    onboard.waf_prod_version = waf_config_detail['details']['productionVersion']
+                else:
+                    onboard.waf_prod_version = None
+                if 'stagingVersion' in waf_config_detail['details'].keys():
+                    onboard.waf_stage_version = waf_config_detail['details']['stagingVersion']
+                else:
+                    onboard.waf_stage_version = None
+
+                logger.debug(f'{onboard.onboard_waf_config_id} {onboard.onboard_waf_prev_version} {onboard.waf_prod_version} {onboard.waf_stage_version}')
+                logger.info(f'{onboard.waf_config_name}{space:>{column_width - len(onboard.waf_config_name)}}valid waf_config_name')
+                logger.info(f'{onboard.onboard_waf_config_id}{space:>{column_width - len(str(onboard.onboard_waf_config_id))}}waf config id')
+
+                empty = (column_width
+                         - len(f'{onboard.onboard_waf_prev_version}')  # noqa W503
+                         - len(f'{onboard.waf_stage_version}')  # noqa W503
+                         - len(f'{onboard.waf_prod_version}')  # noqa W503
+                         - 5)  # noqa W503
+                msg_versions = f'v{onboard.onboard_waf_prev_version}:v{onboard.waf_stage_version}:v{onboard.waf_prod_version}'
+                logger.info(f'{msg_versions}{space:>{empty}}latest:staging:production version')
+
+                if onboard.onboard_waf_config_id is not None:
+                    logger.debug(f'{onboard.onboard_waf_config_id} {onboard.waf_prod_version}')
+                    _, policies = papi.get_waf_policy(onboard)
+                    _, target_ids = papi.list_match_targets(onboard.onboard_waf_config_id,
+                                                                        onboard.onboard_waf_prev_version,
+                                                                        policies)
+
+                    if onboard.waf_match_target_id in target_ids:
+                        for k in policies:
+                            if onboard.waf_match_target_id in policies[k]:
+                                logger.info(f'{policies[k][0]}{space:>{column_width - len(policies[k][0])}}found existing policy')
+                                logger.info(f'{onboard.waf_match_target_id}{space:>{column_width - len(str(onboard.waf_match_target_id))}}found waf_match_target_id')
+                    else:
+                        logger.error(f'{onboard.waf_match_target_id}{space:>{column_width - len(str(onboard.waf_match_target_id))}}invalid waf_match_target_id')
+                        count += 1
+
+        if len(onboard.paths) == 0:
+            count += 1
+            logger.error('rulename cannot be empty.  please check path column in input CSV file')
+
+        if count == 0:
+            self.valid = True
+        else:
+            self.valid = False
+            sys.exit(logger.error(f'Total {count} errors, please review'))
+
+        return self.valid
+
     def validateFile(self, source: str, file_location: str) -> bool:
         logger.debug(f'{file_location} {type(file_location)} {os.path.exists(file_location)}')
         logger.debug(os.path.abspath(file_location))
-        if os.path.isfile(os.path.abspath(file_location)):
-            return True
-        else:
-            return False
+        return os.path.isfile(os.path.abspath(file_location))
 
     def validateProductId(self, wrapper_object, contract_id, product_id) -> dict:
         """
@@ -719,12 +893,8 @@ class utility:
                     if each_item['productId'] == product_id:
                         products['Found'] = True
                     products['products'].append(each_item['productId'])
-                else:
-                    pass
         else:
             print(json.dumps(get_products_response.json(), indent=4))
-            pass
-
         return products
 
     def validateEdgeHostnameExists(self, wrapper_object, edge_hostname) -> bool:
@@ -758,7 +928,7 @@ class utility:
         config_detail = dict()
         config_detail['Found'] = False
         waf_configs_response = wrapper_object.getWafConfigurations()
-        if waf_configs_response.status_code == 200:
+        if waf_configs_response.ok:
             configurations = waf_configs_response.json()['configurations']
             for each_config in configurations:
                 if 'name' in each_config:
@@ -1237,6 +1407,20 @@ class utility:
 
         return (propertyJson, hostnameList)
 
+    def csv_2_path_array(self, filepath: str) -> list:
+        paths = []
+        with open(filepath, encoding='utf-8-sig', newline='') as f:
+            for _, row in enumerate(csv.DictReader(f), 1):
+                path = row['path']
+                pattern = r'/([^/-]+)-'
+                match = re.search(pattern, path)
+                if match:
+                    value_before_hyphen = match.group(1)
+                    paths.append({'path_match': row['path'],
+                                  'rulename': value_before_hyphen.upper()})
+
+        return paths
+
     def validate_group_id(self, onboard, groups) -> None:
         for group in groups:
             if group['contractIds'][0] == onboard.contract_id:
@@ -1568,3 +1752,307 @@ class utility:
             sys.exit(logger.error(f'Total {count} errors, please review'))
 
         return show_df
+
+    def env_validator(self, filepath: str) -> dict:
+        with open(filepath) as f:
+            env_details = json.load(f)
+        return env_details
+
+    def search_for_json_rule_by_name(self, data, target_key, target_value, path='', paths=None):
+        if paths is None:
+            paths = []
+
+        if isinstance(data, dict):
+            for key, value in data.items():
+                new_path = f'{path}.{key}' if path else key
+                if key == target_key and value == target_value:
+                    paths.append(new_path)
+                if isinstance(value, (dict, list)):
+                    self.search_for_json_rule_by_name(
+                        value, target_key, target_value, new_path, paths
+                    )
+        elif isinstance(data, list):
+            for index, item in enumerate(data):
+                new_path = f'{path}[{index}]'
+                self.search_for_json_rule_by_name(item, target_key, target_value, new_path, paths)
+
+        return paths
+
+    def create_new_rule_json(self, onboard: Onboard, cpcode: dict[str, int], ruletree: dict):
+
+        loc = onboard.ruletree_rules_loc.replace('.name', '')
+        full_ruleset = self.get_full_behavior_by_jsonpath(ruletree, loc)
+        logger.warning(f'Created new {len(onboard.paths)} rules')
+        for rule in onboard.paths:
+            json_to_add = self.generate_custom_rule_json(cpcode[rule['rulename']], rule['path_match'], rule['rulename'])
+            full_ruleset['children'].append(json_to_add)
+            logger.info(f"    rulename {rule['rulename']:<20} {rule['path_match']}")
+
+        full_ruleset = sorted(full_ruleset['children'], key=lambda x: x['name'])
+
+        parts = re.split(r'\.|\[|\]', f'{loc}.children')
+        # Filter out empty strings from results
+        parts = [part for part in parts if part]
+
+        current = ruletree
+        for i, part in enumerate(parts):
+            if part.isdigit():  # This is a list index
+                part = int(part)  # Convert index to integer
+                if i == len(parts) - 1:
+                    current[part] = full_ruleset  # Set value at index
+                else:
+                    current = current[part]  # Navigate to the next level
+            else:  # This is a dictionary key
+                if i == len(parts) - 1:
+                    current[part] = full_ruleset  # Set new value at the key
+                else:
+                    current = current.get(part, {})  # Navigate to the next level, creating new dict if necessary
+
+        return ruletree
+
+    def get_full_behavior_by_jsonpath(self, json_object, json_path: str):
+        """
+        Extracts a value from a nested JSON object using a simplified JSONPath expression.
+
+        Parameters:
+        json_object (dict): The JSON object to be queried.
+        json_path (str): The simplified JSONPath expression to locate the desired data.
+
+        Returns:
+        The value from the JSON object located at the specified path.
+        If the path does not exist, None is returned.
+        """
+        elements = json_path.split('.')
+        current_element = json_object
+
+        for elem in elements:
+            if '[' in elem and ']' in elem:
+                key, index = elem.split('[')
+                index = int(index[:-1])  # Remove ']' and convert to int
+                try:
+                    if key == '':
+                        current_element = current_element[index]
+                    else:
+                        current_element = current_element[key][index]
+                except (IndexError, KeyError, TypeError):
+                    return None
+            else:
+                try:
+                    current_element = current_element[elem]
+                except KeyError:
+                    return None
+
+        return current_element
+
+    def generate_custom_rule_json(self, cpcode: int, path: str, rulename: str):
+
+        return ({
+            'name': rulename.upper(),
+            'children': [],
+            'behaviors': [
+                {
+                    'name': 'cpCode',
+                    'options': {
+                        'value': {
+                            'id': cpcode
+                        }
+                    }
+                },
+                {
+                    'name': 'setVariable',
+                    'options': {
+                        'variableName': 'PMUSER_CURATED_PROP',
+                        'valueSource': 'EXPRESSION',
+                        'transform': 'NONE',
+                        'variableValue': '1'
+                    }
+                }
+            ],
+            'criteria': [
+                {
+                    'name': 'path',
+                    'options': {
+                        'matchOperator': 'MATCHES_ONE_OF',
+                        'values': [
+                            path
+                        ],
+                        'matchCaseSensitive': True,
+                        'normalize': False
+                    }
+                }
+            ],
+            'criteriaMustSatisfy': 'any',
+            'comments': f'RARE-JIRA: Add Curated property {rulename.upper()}'
+        })
+
+    def check_existing_custom_rules(self, onboard, ruletree) -> list:
+        loc = onboard.ruletree_rules_loc.replace('.name', '')
+        full_ruleset = self.get_full_behavior_by_jsonpath(ruletree, loc)
+        input_rule_names = set(list(map(lambda x: x['rulename'], onboard.paths)))
+        existing_rule_names = set(list(map(lambda x: x['name'], full_ruleset['children'])))
+        duplicated = sorted(list(existing_rule_names.intersection(input_rule_names)))
+        return duplicated
+
+
+class Cloudlets:
+    def __init__(self, config):
+        self.account_key = config.account_key
+        self.section = config.section
+        self.policy_name = None
+
+    def split_into_chunks(self, match_value, new_value, limit: int):
+        data = match_value.split(' ')
+        new_values = new_value.split(' ')
+        data.extend(new_values)
+        sorted_paths = sorted(data)
+        chunks = []
+        current_chunk = ''
+        for i, value in enumerate(sorted_paths):
+            if len(current_chunk) + len(value) + 1 <= limit:
+                current_chunk += f'{value} '
+            else:
+                chunks.append(current_chunk.strip())
+                current_chunk = f'{value} '
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+
+        return chunks
+
+    def validate_cloudlet_policy(self, policy: str) -> bool:
+        cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'
+        cmd = f'{cmd} status --policy {policy}'
+        command = cmd.split(' ')
+        print()
+        logger.warning('Validating cloudlet policy')
+        childprocess = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=False)
+        stdout, _ = childprocess.communicate()
+        if 'Found policy-id' in stdout.decode('utf-8'):
+            self.policy_name = policy
+            logger.info(stdout.decode('utf-8'))
+            return True
+
+        logger.error(f'Unable to find existing policy {policy}')
+        return False
+
+    def retrieve_matchrules(self, policy: str) -> bool:
+        cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'
+        cmd = f'{cmd} retrieve --only-match-rules --json --policy {policy}'
+        command = cmd.split(' ')
+        print()
+        logger.debug(cmd)
+        childprocess = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=False)
+        stdout, stderr = childprocess.communicate()
+        if 'policy_matchrules.json' not in stdout.decode('utf-8'):
+            sys.exit(logger.info(stdout.decode('utf-8')))
+        return True
+
+    def create_cloudlet_policy_version(self, policy: str, new_rule: dict) -> int:
+        updated_rules = {}
+        updated_rules['matchRuleFormat'] = '1.0'
+        updated_rules['matchRules'] = new_rule
+
+        with open('policy_matchrules_updated.json', 'w') as f:
+            json.dump(updated_rules, f, indent=4)
+
+        cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'
+        cmd = f'{cmd} update --policy {policy} --file policy_matchrules_updated.json'
+        command = cmd.split(' ')
+        logger.debug(cmd)
+        update_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        stdout, stderr = update_cloudlet_cli.communicate()
+        version_number = 0
+        if 'new version ' not in stdout.decode('utf-8'):
+            sys.exit(logger.error(stdout.decode('utf-8')))
+        else:
+            create_output = stdout.decode('utf-8')
+            logger.debug(create_output)
+            pattern = r'version (\d+)'
+            match = re.search(pattern, create_output)
+            if match:
+                print()
+                version_number = match.group(1)
+                logger.warning(f'cloudlet new version number: v{version_number}')
+        return version_number
+
+    def activate_policy(self, onboard, version: int, network: str):
+        if network == 'STAGING':
+            activation = onboard.activate_cloudlet_staging
+        else:
+            activation = onboard.activate_cloudlet_production
+
+        if not activation:
+            logger.warning(f'SKIP - Activate Cloudlet on {network.upper()}')
+        else:
+            cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'
+            cmd = f'{cmd} activate --policy {onboard.cloudlet_policy} --network staging --version {version}'
+            command = cmd.split(' ')
+            logger.debug(cmd)
+            act_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            stdout, stderr = act_cloudlet_cli.communicate()
+            print(stdout.decode('utf-8'))
+
+    def update_phasedrelease_rule(self,
+                                  rules: dict,
+                                  rulename: str,
+                                  new_value: str,
+                                  matchon_type: str | None = None):
+
+        original_property = []
+        update = False
+        index = 0
+        match_rules = rules['matchRules']
+        for i, rule in enumerate(match_rules):
+            name = rule['name']
+            if name != rulename:
+                continue
+
+            index = i
+            matches = rule['matches']
+            origin = rule['forwardSettings']['originId']
+            percent = rule['forwardSettings']['percent']
+            for j, element in enumerate(matches):
+                match_value = element['matchValue']
+                match_operator = element['matchOperator']
+                match_type = element['matchType']
+                negative_match = element['negate']
+                xs = match_value.split(' ')
+
+                str_count = len(match_value)
+                elements = len(xs)
+                msg = f'{name:<15} {i:>3}.{j}   {match_type:<8} {str(negative_match):<10}'
+                options = f'{origin:<25} {percent}%'
+                logger.info(f'   {msg} {match_operator:<10} {str_count:<7} {elements:<5} {options}')
+
+                LIMIT = 8000
+                if not negative_match:
+                    original_property.append(element)
+                else:
+                    if not match_value.startswith('/en/hotels/'):
+                        original_property.append(element)
+                        continue
+
+                    if len(match_value) > LIMIT:
+                        original_property.append(element)
+                        continue
+
+                    print()
+                    chunks = self.split_into_chunks(match_value, new_value, LIMIT)
+
+                    for chunk in chunks:
+                        ex = deepcopy(element)
+                        ex['matchValue'] = chunk
+                        original_property.append(ex)
+                        logger.info(f'Update criteria {i:>3}.{j} elements {len(chunk)}')
+                        update = True
+
+        if update:
+            msg = f"{len(match_rules[index]['matches'])}/{len(original_property)}"
+            logger.warning(f'Number of condition for rule {rulename} before/after: {msg}')
+            print()
+
+            match_rules[index]['matches'] = original_property
+            for i, match in enumerate(match_rules[index]['matches']):
+                str_count = len(match['matchValue'])
+                logger.info(f'{i:<3} {str_count:<10}')
+
+        return match_rules

@@ -405,3 +405,30 @@ class wafFunctions:
                         f'[red]{status}' if status != 'ACTIVATED' else '[green]ACTIVATED',
                         )
         return table
+
+    def updateMatchTargetPaths(self, wrapper_object, path_list, config_id, version, target_id):
+        """
+        Function to fetch and update Match Target
+        """
+        match_target_response = wrapper_object.getMatchTarget(config_id, version, target_id)
+        logger.debug(json.dumps(match_target_response.json(), indent=4))
+        if match_target_response.status_code == 200:
+            # Update the hostnames here
+            updated_json_data = match_target_response.json()
+
+            for every_path in path_list:
+                updated_json_data['filePaths'].append(every_path)
+            logger.debug(json.dumps(updated_json_data, indent=4))
+
+            # Now update the match target
+            modify_match_target_response = wrapper_object.modifyMatchTarget(config_id,
+                                                                            version, target_id,
+                                                                            json.dumps(updated_json_data))
+            if modify_match_target_response.status_code == 200:
+                return True
+            else:
+                logger.error(json.dumps(modify_match_target_response.json(), indent=4))
+                return False
+        else:
+            logger.error(json.dumps(match_target_response.json(), indent=4))
+            return False

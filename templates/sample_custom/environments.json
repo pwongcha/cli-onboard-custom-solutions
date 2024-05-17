@@ -1,0 +1,47 @@
+{
+    "prod": {
+        "property_name": "amd2",
+        "cpcode_prefix": "DU",
+        "property_rule_name": "Default CORS Policy",
+        "cloudlet_policy": "peak_CD_cardinal",
+        "waf_config_name": "ah_onboa_1",
+        "waf_policy_name": "policy_1",
+        "waf_match_target_id": 7862533,
+        "activate_property_staging": true,
+        "activate_waf_staging": false,
+        "activate_cloudlet_staging": true,
+        "activate_property_production": false,
+        "activate_waf_production": false,
+        "activate_cloudlet_production": false
+    },
+    "dev": {
+        "property_name": "",
+        "cpcode_prefix": "",
+        "property_rule_name": "",
+        "cloudlet_policy": "",
+        "waf_config_name": "",
+        "waf_policy_name": "",
+        "waf_match_target_id": 222222,
+        "activate_property_staging": false,
+        "activate_property_production": false,
+        "activate_waf_staging": false,
+        "activate_waf_production": false,
+        "activate_cloudlet_staging": false,
+        "activate_cloudlet_production": false
+    },
+    "qa": {
+        "property_name": "",
+        "cpcode_prefix": "",
+        "property_rule_name": "",
+        "cloudlet_policy": "",
+        "waf_config_name": "",
+        "waf_policy_name": "",
+        "waf_match_target_id": 333333,
+        "activate_property_staging": false,
+        "activate_property_production": false,
+        "activate_waf_staging": false,
+        "activate_waf_production": false,
+        "activate_cloudlet_staging": false,
+        "activate_cloudlet_production": false
+    }
+}

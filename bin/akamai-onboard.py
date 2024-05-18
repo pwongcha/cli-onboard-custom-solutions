@@ -1102,15 +1102,29 @@ def custom(config, **kwargs):
 
     # cloudlets
     print('\n\n')
-    logger.warning('Updating Cloudlet Policy')
+    logger.warning('Processing Cloudlet Policy')
     uc.retrieve_matchrules(onboard.cloudlet_policy)
     cloudlet_rules = load_json('policy_matchrules.json')
-    path_matches = set(list(map(lambda x: x['path_match'], onboard.paths)))
-    updated_rules = uc.update_phasedrelease_rule(cloudlet_rules, 'Property', new_value=' '.join(path_matches))
-    version_number = uc.create_cloudlet_policy_version(onboard.cloudlet_policy, updated_rules)
-    print()
-    uc.activate_policy(onboard, version_number, network='STAGING')
-    uc.activate_policy(onboard, version_number, network='PRODUCTION')
+    count = 0
+    for rule in cloudlet_rules['matchRules']:
+        if rule['name'] != 'Property':
+            count += 1
+            continue
+        else:
+            path_matches = set(list(map(lambda x: x['path_match'], onboard.paths)))
+            update, updated_rules = uc.update_phasedrelease_rule(cloudlet_rules, 'Property', new_value=' '.join(path_matches))
+
+            if not update:
+                logger.warning('No update')
+            else:
+                logger.warning('Updating Cloudlet Policy')
+                version_number = uc.create_cloudlet_policy_version(onboard.cloudlet_policy, updated_rules)
+                print()
+                uc.activate_policy(onboard, version_number, network='STAGING')
+                uc.activate_policy(onboard, version_number, network='PRODUCTION')
+
+    if count == len(cloudlet_rules['matchRules']):
+        logger.warning('Property rulename not found in cloudlet Policy')
 
     print('\n\n')
     end_time = time.perf_counter()

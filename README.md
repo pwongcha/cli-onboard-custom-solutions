@@ -546,14 +546,17 @@ Update delivery config + cloudlet policy + waf
 
 ```bash
 Options:
-  --csv                csv file with headers "path,propertyName"  [required]
   --env                environment JSON file  [required]
+  --csv                csv file with headers "path,propertyName"  [required]
   --build-env          environment to build  [default: dev; required]
   --property-version   property version to build from network.  options: prod,
                        staging, latest, or numeric value  [default: prod]
+
   --email              email(s) for activation notifications
   --use-cpcode         override creating new cpcode for each new path, provide
                        valid existing numeric value
+
+  --dryrun             validate only  [default: False]
 
 ```
 
@@ -565,21 +568,19 @@ flowchart LR
 
 ### Usage
 
+- Sample csv and json file are in templates/sample_custom folder
+
 ```bash
 
-akamai onboard custom --env environments.json --csv batch-create.csv --build-env prod
+akamai onboard -s default custom --env environments.json --csv batch-create.csv --build-env prod
 
-akamai onboard custom --env environments.json --csv batch-create.csv --build-env dev \
+akamai onboard -s default custom --env environments.json --csv batch-create.csv --build-env dev \
     --property-version staging --use-cpcode 111111 --dryrun
 ```
 
-# Contribution
-
-By submitting a contribution (the “Contribution”) to this project, and for good and valuable consideration, the receipt and sufficiency of which are hereby acknowledged, you (the “Assignor”) irrevocably convey, transfer, and assign the Contribution to the owner of the repository (the “Assignee”), and the Assignee hereby accepts, all of your right, title, and interest in and to the Contribution along with all associated copyrights, copyright registrations, and/or applications for registration and all issuances, extensions and renewals thereof (collectively, the “Assigned Copyrights”). You also assign all of your rights of any kind whatsoever accruing under the Assigned Copyrights provided by applicable law of any jurisdiction, by international treaties and conventions and otherwise throughout the world.
-
 ## Local Contribution
 
-- Minimum python 3.6 `git clone https://github.com/akamai/cli-onboard.git  `
+- Minimum python 3.6 `git clone https://github.com/pwongcha/cli-onboard-custom-solutions.git cli-onboard`
 - cd into cli-onboard directory `cd cli-onboard`
 - Create python virtual environment `python3 -m venv .venv`
 - Activate python virtual environment `source .venv/bin/activate`
@@ -597,13 +598,18 @@ By submitting a contribution (the “Contribution”) to this project, and for g
 ## Local Install
 
 - Verify as Akamai CLI, first uninstall existing version `akamai uninstall onboard`
-- Run `git init`
+- Minimum python 3.6 `git clone https://github.com/pwongcha/cli-onboard-custom-solutions.git cli-onboard`
+- cd into cli-onboard directory `cd cli-onboard`
 - Install from local repo
   - Run `pwd` to get current directory i.e `/Users/Documents/cli-onboard`
     - For MAC OS, run `akamai install file:///Users/Documents/cli-onboard`
       - Please note there is 3 slashes
     - For Window, run `akamai install file://C:/Users/sample/cli-onboard`
       - Only 2 slashes
+
+# Contribution
+
+By submitting a contribution (the “Contribution”) to this project, and for good and valuable consideration, the receipt and sufficiency of which are hereby acknowledged, you (the “Assignor”) irrevocably convey, transfer, and assign the Contribution to the owner of the repository (the “Assignee”), and the Assignee hereby accepts, all of your right, title, and interest in and to the Contribution along with all associated copyrights, copyright registrations, and/or applications for registration and all issuances, extensions and renewals thereof (collectively, the “Assigned Copyrights”). You also assign all of your rights of any kind whatsoever accruing under the Assigned Copyrights provided by applicable law of any jurisdiction, by international treaties and conventions and otherwise throughout the world.
 
 # Notice
 

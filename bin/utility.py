@@ -1409,16 +1409,18 @@ class utility:
 
     def csv_2_path_array(self, filepath: str) -> list:
         paths = []
-        with open(filepath, encoding='utf-8-sig', newline='') as f:
-            for _, row in enumerate(csv.DictReader(f), 1):
-                path = row['path']
-                pattern = r'/([^/-]+)-'
-                match = re.search(pattern, path)
-                if match:
-                    value_before_hyphen = match.group(1)
-                    paths.append({'path_match': row['path'],
-                                  'rulename': value_before_hyphen.upper()})
-
+        try:
+            with open(filepath, encoding='utf-8-sig', newline='') as f:
+                for _, row in enumerate(csv.DictReader(f), 1):
+                    path = row['path']
+                    pattern = r'/([^/-]+)-'
+                    match = re.search(pattern, path)
+                    if match:
+                        value_before_hyphen = match.group(1)
+                        paths.append({'path_match': row['path'],
+                                      'rulename': value_before_hyphen.upper()})
+        except FileNotFoundError as err:
+            logger.error(err)
         return paths
 
     def validate_group_id(self, onboard, groups) -> None:
@@ -1754,8 +1756,12 @@ class utility:
         return show_df
 
     def env_validator(self, filepath: str) -> dict:
-        with open(filepath) as f:
-            env_details = json.load(f)
+        env_details = {}
+        try:
+            with open(filepath) as f:
+                env_details = json.load(f)
+        except FileNotFoundError as err:
+            logger.error(err)
         return env_details
 
     def search_for_json_rule_by_name(self, data, target_key, target_value, path='', paths=None):
@@ -1898,7 +1904,18 @@ class Cloudlets:
     def __init__(self, config):
         self.account_key = config.account_key
         self.section = config.section
+        self.edgerc = config.edgerc
         self.policy_name = None
+
+    def build_cmd(self) -> str:
+        cmd = 'akamai cloudlets'
+        if self.account_key:
+            cmd = f'{cmd} -a {self.account_key}'
+        if self.edgerc:
+            cmd = f'{cmd} --edgerc {self.edgerc}'
+        if self.section:
+            cmd = f'{cmd} -s {self.section}'
+        return cmd
 
     def split_into_chunks(self, match_value, new_value, limit: int):
         data = match_value.split(' ')
@@ -1919,7 +1936,7 @@ class Cloudlets:
         return chunks
 
     def validate_cloudlet_policy(self, policy: str) -> bool:
-        cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'
+        cmd = self.build_cmd()
         cmd = f'{cmd} status --policy {policy}'
         command = cmd.split(' ')
         print()
@@ -1935,10 +1952,9 @@ class Cloudlets:
         return False
 
     def retrieve_matchrules(self, policy: str) -> bool:
-        cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'
+        cmd = self.build_cmd()
         cmd = f'{cmd} retrieve --only-match-rules --json --policy {policy}'
         command = cmd.split(' ')
-        print()
         logger.debug(cmd)
         childprocess = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=False)
         stdout, stderr = childprocess.communicate()
@@ -1954,7 +1970,7 @@ class Cloudlets:
         with open('policy_matchrules_updated.json', 'w') as f:
             json.dump(updated_rules, f, indent=4)
 
-        cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'
+        cmd = self.build_cmd()
         cmd = f'{cmd} update --policy {policy} --file policy_matchrules_updated.json'
         command = cmd.split(' ')
         logger.debug(cmd)
@@ -2001,16 +2017,21 @@ class Cloudlets:
         update = False
         index = 0
         match_rules = rules['matchRules']
-        for i, rule in enumerate(match_rules):
+        before_match_rules = deepcopy(match_rules)
+        for i, rule in enumerate(match_rules, start=1):
             name = rule['name']
             if name != rulename:
                 continue
 
             index = i
-            matches = rule['matches']
+            try:
+                matches = rule['matches']
+            except KeyError:
+                continue
             origin = rule['forwardSettings']['originId']
             percent = rule['forwardSettings']['percent']
-            for j, element in enumerate(matches):
+
+            for j, element in enumerate(matches, start=1):
                 match_value = element['matchValue']
                 match_operator = element['matchOperator']
                 match_type = element['matchType']
@@ -2020,7 +2041,7 @@ class Cloudlets:
                 str_count = len(match_value)
                 elements = len(xs)
                 msg = f'{name:<15} {i:>3}.{j}   {match_type:<8} {str(negative_match):<10}'
-                options = f'{origin:<25} {percent}%'
+                options = f'{percent}%  {origin}'
                 logger.info(f'   {msg} {match_operator:<10} {str_count:<7} {elements:<5} {options}')
 
                 LIMIT = 8000
@@ -2038,21 +2059,31 @@ class Cloudlets:
                     print()
                     chunks = self.split_into_chunks(match_value, new_value, LIMIT)
 
-                    for chunk in chunks:
-                        ex = deepcopy(element)
-                        ex['matchValue'] = chunk
-                        original_property.append(ex)
-                        logger.info(f'Update criteria {i:>3}.{j} elements {len(chunk)}')
+                    for ni, chunk in enumerate(chunks, start=1):
                         update = True
+                        if ni == 1:
+                            ex = deepcopy(element)
+                            ex['matchValue'] = chunk
+                            original_property.append(ex)
+                            logger.info(f'Update criteria {i:>3}.{j} {match_operator:<10} {len(chunk)}')
+
+                        else:
+                            ex = deepcopy(element)
+                            ex['matchValue'] = chunk
+                            original_property.append(ex)
+                            j = j + 1
+                            logger.info(f'New    criteria {i:>3}.{j} {match_operator:<10} {len(chunk)}')
 
         if update:
-            msg = f"{len(match_rules[index]['matches'])}/{len(original_property)}"
+            msg = f"{len(before_match_rules[index - 1]['matches'])}/{len(original_property)}"
             logger.warning(f'Number of condition for rule {rulename} before/after: {msg}')
             print()
 
-            match_rules[index]['matches'] = original_property
-            for i, match in enumerate(match_rules[index]['matches']):
+            match_rules[index - 1]['matches'] = original_property
+            for i, match in enumerate(match_rules[index - 1]['matches'], start=1):
                 str_count = len(match['matchValue'])
-                logger.info(f'{i:<3} {str_count:<10}')
+                xs = match['matchValue'].split(' ')
+                elements = len(xs)
+                logger.info(f'{i:<3} {str_count:<10} {elements:<5}')
 
-        return match_rules
+        return update, match_rules

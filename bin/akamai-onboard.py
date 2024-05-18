@@ -133,13 +133,18 @@ def fetch_sample_templates():
     """
     Retrieve sample templates for available commands
     """
-    source_folder = Path(root, 'templates', 'sample_setup_files')
-    Path('sample_templates').mkdir(parents=True, exist_ok=True)
-    target_folder = Path().resolve()
-    target_folder = Path(target_folder, 'sample_templates')
+    folders = ['sample_setup_files', 'sample_custom']
+    for folder in folders:
+        source_folder = Path(root, 'templates', folder)
+        if not source_folder.is_dir():
+            print(f'Invalid source directory: {source_folder}')
+        else:
+            Path('sample_templates').mkdir(parents=True, exist_ok=True)
+            target_folder = Path().resolve()
+            target_folder = Path(target_folder, 'sample_templates')
 
-    copytree(source_folder, target_folder, dirs_exist_ok=True)
-    logger.info(f'Sample templates can be found in directory {target_folder}')
+            copytree(source_folder, target_folder, dirs_exist_ok=True)
+            logger.info(f'Sample templates can be found in directory {target_folder}')
 
 
 @cli.command(short_help='Create a delivery configuration with mutltiple hostnames and security configuration with one WAF policy')
@@ -1097,15 +1102,29 @@ def custom(config, **kwargs):
 
     # cloudlets
     print('\n\n')
-    logger.warning('Updating Cloudlet Policy')
+    logger.warning('Processing Cloudlet Policy')
     uc.retrieve_matchrules(onboard.cloudlet_policy)
     cloudlet_rules = load_json('policy_matchrules.json')
-    path_matches = set(list(map(lambda x: x['path_match'], onboard.paths)))
-    updated_rules = uc.update_phasedrelease_rule(cloudlet_rules, 'Property', new_value=' '.join(path_matches))
-    version_number = uc.create_cloudlet_policy_version(onboard.cloudlet_policy, updated_rules)
-    print()
-    uc.activate_policy(onboard, version_number, network='STAGING')
-    uc.activate_policy(onboard, version_number, network='PRODUCTION')
+    count = 0
+    for rule in cloudlet_rules['matchRules']:
+        if rule['name'] != 'Property':
+            count += 1
+            continue
+        else:
+            path_matches = set(list(map(lambda x: x['path_match'], onboard.paths)))
+            update, updated_rules = uc.update_phasedrelease_rule(cloudlet_rules, 'Property', new_value=' '.join(path_matches))
+
+            if not update:
+                logger.warning('No update')
+            else:
+                logger.warning('Updating Cloudlet Policy')
+                version_number = uc.create_cloudlet_policy_version(onboard.cloudlet_policy, updated_rules)
+                print()
+                uc.activate_policy(onboard, version_number, network='STAGING')
+                uc.activate_policy(onboard, version_number, network='PRODUCTION')
+
+    if count == len(cloudlet_rules['matchRules']):
+        logger.warning('Property rulename not found in cloudlet Policy')
 
     print('\n\n')
     end_time = time.perf_counter()

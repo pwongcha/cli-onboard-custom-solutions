@@ -988,6 +988,7 @@ def appsec_create(config, contract_id, group_id, by, activate, csv, email):
 @click.option('--email', metavar='', multiple=True, help='email(s) for activation notifications')
 @click.option('--use-cpcode', metavar='', help='override creating new cpcode for each new path, provide valid existing numeric value')
 @click.option('--dryrun', metavar='', is_flag=True, default=False, help='validate only', show_default=True)
+@click.option('--note', metavar='', default='Onboard CLI custom', help='property version note', show_default=True)
 @pass_config
 def custom(config, **kwargs):
     """
@@ -1062,7 +1063,7 @@ def custom(config, **kwargs):
                                                          version=onboard.updated_property_version,
                                                          network='STAGING',
                                                          emailList=onboard.notification_emails,
-                                                         notes='Onboard CLI Activation')
+                                                         notes=onboard.property_version_note)
         staging_act_id = act[0]['activationId'] if len(fail) == 0 else fail[0]['activationId']
 
     if not onboard.activate_property_production:
@@ -1076,7 +1077,7 @@ def custom(config, **kwargs):
                                                             version=onboard.updated_property_version,
                                                             network='PRODUCTION',
                                                             emailList=onboard.notification_emails,
-                                                            notes='Onboard CLI Activation')
+                                                            notes=onboard.property_version_note)
         prod_act_id = act[0]['activationId'] if len(fail) == 0 else fail[0]['activationId']
 
     # Create WAF version, Update WAF match target

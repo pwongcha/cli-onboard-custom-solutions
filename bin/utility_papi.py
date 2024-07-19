@@ -494,7 +494,8 @@ class papiFunctions:
                                                onboard.group_id,
                                                onboard.property_id,
                                                ruleFormat,
-                                               ruletree=json.dumps({'rules': onboard.updated_property_rule_tree}),
+                                               ruletree=json.dumps({'rules': onboard.updated_property_rule_tree,
+                                                                    'comments': onboard.property_version_note}),
                                                version=onboard.updated_property_version)
 
         if not update_resp.ok:

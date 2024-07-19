@@ -40,6 +40,7 @@ class Onboard:
             self.valid_env = True
             self.paths = util.csv_2_path_array(self.csv_loc)
             self.property_version = click_args['property_version']
+            self.property_version_note = click_args['note']
             self.cloudlet_policy = self.env_details[self.build_env]['cloudlet_policy']
 
             self.activate_property_staging = self.env_details[self.build_env]['activate_property_staging']

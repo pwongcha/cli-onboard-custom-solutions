@@ -149,7 +149,7 @@ class apiCallsWrapper:
         """
         headers = {'Content-Type': 'application/vnd.akamai.papirules.latest+json'}
         if ruleFormat != 'latest':
-            version_string = f'application/vnd.akamai.papirules.{ruleFormat}json'
+            version_string = f'application/vnd.akamai.papirules.{ruleFormat}+json'
             headers['Content-Type'] = version_string
         update_property_url = 'https://' + self.access_hostname + '/papi/v1/properties/' + \
                               propertyId + f'/versions/{version}/rules?contractId=' + \
@@ -735,6 +735,6 @@ class apiCallsWrapper:
         create_property_url = f'https://{self.access_hostname}/papi/v1/properties/{property_id}/versions?contractId={contract_id}&groupId={group_id}'
         create_property_url = self.formUrl(create_property_url)
         create_property_response = self.session.post(create_property_url,
-                                                data=json.dumps(newPropertyData),
-                                                headers=headers)
+                                                     data=json.dumps(newPropertyData),
+                                                     headers=headers)
         return create_property_response

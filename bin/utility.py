@@ -808,6 +808,17 @@ class utility:
                 else:
                     logger.info(f'{onboard.property_rule_name}{space:>{column_width - len(onboard.property_rule_name)}}rule name to inject into')
 
+            if 'property_https_paths_rule_name' not in onboard.env_details[onboard.build_env].keys():
+                logger.error(f'property_https_paths_rule_name{space:>{column_width - len("property_https_paths_rule_name")}}not found in environment file')
+                onboard.property_https_paths_rule_name = False
+            else:
+                onboard.property_https_paths_rule_name = onboard.env_details[onboard.build_env]['property_https_paths_rule_name']
+                if onboard.property_rule_name.strip(' ') == '':
+                    logger.error(f'{onboard.property_https_paths_rule_name}{space:>{column_width - len(onboard.property_https_paths_rule_name)}}rule is empty')
+                    onboard.property_https_paths_rule_name = False
+                else:
+                    logger.info(f'{onboard.property_https_paths_rule_name}{space:>{column_width - len(onboard.property_https_paths_rule_name)}}rule name to add path matches into')
+
             # security
             onboard.waf_config_name = onboard.env_details[onboard.build_env]['waf_config_name']
             onboard.waf_policy_name = onboard.env_details[onboard.build_env]['waf_policy_name']
@@ -1785,6 +1796,18 @@ class utility:
         return paths
 
     def create_new_rule_json(self, onboard: Onboard, cpcode: dict[str, int], ruletree: dict):
+
+        if onboard.ruletree_https_paths_rules_loc:
+            path_inj_loc = onboard.ruletree_https_paths_rules_loc.replace('.name', '')
+            full_ruleset = self.get_full_behavior_by_jsonpath(ruletree, path_inj_loc)
+
+            for criteria in full_ruleset['criteria']:
+                if criteria['name'] == 'path':
+                    logger.warning('Found path match criteria')
+                    for path in onboard.paths:
+                        criteria['options']['values'].append(path['path_match'])
+                    logger.warning(f'Added {len(onboard.paths)} paths to {onboard.property_https_paths_rule_name} rule')
+                    break
 
         loc = onboard.ruletree_rules_loc.replace('.name', '')
         full_ruleset = self.get_full_behavior_by_jsonpath(ruletree, loc)

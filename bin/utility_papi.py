@@ -448,9 +448,32 @@ class papiFunctions:
                                                            onboard.property_version_base)
         space = ' '
         column_width = 50
-        empty_space = column_width - len(onboard.property_rule_name)
+        empty_space = column_width - len(onboard.property_https_paths_rule_name)
         print()
-        logger.warning('Validating rulename')
+
+        onboard.ruletree_https_paths_rules_loc = False
+        if onboard.property_https_paths_rule_name:
+            logger.warning('Validating https path injection rulename')
+            if property_json:
+                matching_rules = util.search_for_json_rule_by_name(property_json['rules'],
+                                                               target_key='name',
+                                                               target_value=onboard.property_https_paths_rule_name)
+                if matching_rules:
+                    if len(matching_rules) > 1:
+                        logger.warning('Warning! More than one rule name matching the input rule name. Using first matching rule')
+                    logger.debug(matching_rules[0])
+                    onboard.ruletree_https_paths_rules_loc = matching_rules[0]
+                    msg = f'{onboard.property_https_paths_rule_name}{space:>{empty_space}}rulename found in the property'
+                    logger.info(msg)
+                else:
+                    msg = f'{onboard.property_https_paths_rule_name}{space:>{empty_space}}rulename not found in the property, continuing anyway'
+                    logger.info(msg)
+            else:
+                msg = f'{onboard.property_https_paths_rule_name}{space:>{empty_space}}unable to retrieve property version {onboard.property_version_base}'
+                logger.info(msg)
+
+        empty_space = column_width - len(onboard.property_rule_name)
+        logger.warning('Validating rule bundle rulename')
         if property_json:
             matching_rules = util.search_for_json_rule_by_name(property_json['rules'],
                                                                target_key='name',

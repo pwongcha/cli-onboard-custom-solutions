@@ -1036,7 +1036,7 @@ def custom(config, **kwargs):
         if kwargs['use_cpcode']:
             cpcode = int(kwargs['use_cpcode'])
         else:
-            new_cpcode_name = f"{onboard.env_details[onboard.build_env]['cpcode_prefix']}.{path['rulename']}"
+            new_cpcode_name = f"{onboard.env_details[onboard.build_env]['cpcode_prefix']}.{path['rulename'].lower()}"
             cpcode = util_papi.create_new_cpcode(onboard,
                                                  wrapper,
                                                  new_cpcode_name,

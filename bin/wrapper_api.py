@@ -485,7 +485,7 @@ class apiCallsWrapper:
         return modify_hosts_response
 
     def activateWafPolicy(self, config_id: int, version: int,
-                          network: str, emails: list, note='Onboard CLI Activation'):
+                          network: str, emails: list, note):
         """
         Function to activate WAF policy version
         """

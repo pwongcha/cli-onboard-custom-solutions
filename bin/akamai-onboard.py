@@ -1009,6 +1009,7 @@ def custom(config, **kwargs):
 
     # validation
     onboard = onboard_custom.Onboard(config, kwargs, util)
+
     if util.validateCustomSteps(onboard, wrapper):
         util_papi = utility_papi.papiFunctions()
         property_rule_tree = util_papi.custom_property_version(onboard, wrapper, util)
@@ -1119,7 +1120,7 @@ def custom(config, **kwargs):
                 logger.warning('No update')
             else:
                 logger.warning('Updating Cloudlet Policy')
-                version_number = uc.create_cloudlet_policy_version(onboard.cloudlet_policy, updated_rules)
+                version_number = uc.create_cloudlet_policy_version(onboard.cloudlet_policy, updated_rules, onboard.version_notes)
                 print()
                 uc.activate_policy(onboard, version_number, network='STAGING')
                 uc.activate_policy(onboard, version_number, network='PRODUCTION')

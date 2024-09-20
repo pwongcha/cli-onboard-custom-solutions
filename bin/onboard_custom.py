@@ -56,7 +56,7 @@ class Onboard:
             else:
                 self.notification_emails = ['noreply@akamai.com']
 
-            self.version_notes = 'Created using Onboard CLI'
+            self.version_notes = click_args.get('note', 'Created using Onboard CLI')
 
         except KeyError as k:
             exit(logger.error('Invalid argument/value ' + str(k)))

@@ -1985,7 +1985,7 @@ class Cloudlets:
             sys.exit(logger.info(stdout.decode('utf-8')))
         return True
 
-    def create_cloudlet_policy_version(self, policy: str, new_rule: dict) -> int:
+    def create_cloudlet_policy_version(self, policy: str, new_rule: dict, notes: str) -> int:
         updated_rules = {}
         updated_rules['matchRuleFormat'] = '1.0'
         updated_rules['matchRules'] = new_rule
@@ -1994,9 +1994,9 @@ class Cloudlets:
             json.dump(updated_rules, f, indent=4)
 
         cmd = self.build_cmd()
-        cmd = f'{cmd} update --policy {policy} --file policy_matchrules_updated.json'
+        cmd = f'{cmd} update --policy {policy} --file policy_matchrules_updated.json --notes'
         command = cmd.split(' ')
-        logger.debug(cmd)
+        command.append(notes)  # notes can have space inside
         update_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         stdout, stderr = update_cloudlet_cli.communicate()
         version_number = 0

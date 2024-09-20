@@ -28,9 +28,9 @@ class wafFunctions:
                                                   onboard_object.onboard_waf_config_version,
                                                   network,
                                                   onboard_object.notification_emails,
-                                                  note='Onboard CLI Activation')
+                                                  note=onboard_object.version_notes)
 
-        if act_response.status_code == 200:
+        if act_response.ok:
             activation_status = False
             activation_id = act_response.json()['activationId']
             while activation_status is False:
@@ -79,9 +79,9 @@ class wafFunctions:
                                                 onboard_object.onboard_waf_config_version,
                                                 network,
                                                 onboard_object.notification_emails,
-                                                note='Onboard CLI Activation')
+                                                note=onboard_object.version_notes)
 
-        if act_response.status_code == 200:
+        if act_response.ok:
             activation_status = False
             activation_id = act_response.json()['activationId']
             while activation_status is False:
@@ -140,8 +140,7 @@ class wafFunctions:
             modify_hosts_response = wrapper_object.modifyWafHosts(config_id,
                                                                   version,
                                                                   json.dumps(updated_json_data))
-            if modify_hosts_response.status_code == 200 or \
-                modify_hosts_response.status_code == 201:
+            if modify_hosts_response.ok:
                 logger.info(f'Created WAF configuration version: {version}')
                 return True
             else:
@@ -159,7 +158,7 @@ class wafFunctions:
         """
         match_target_response = wrapper_object.getMatchTarget(config_id, version, target_id)
         logger.debug(json.dumps(match_target_response.json(), indent=4))
-        if match_target_response.status_code == 200:
+        if match_target_response.ok:
             # Update the hostnames here
             updated_json_data = match_target_response.json()
             if 'hostnames' in updated_json_data.keys():
@@ -172,7 +171,7 @@ class wafFunctions:
                 modify_match_target_response = wrapper_object.modifyMatchTarget(config_id,
                                                                                 version, target_id,
                                                                                 json.dumps(updated_json_data))
-                if modify_match_target_response.status_code == 200:
+                if modify_match_target_response.ok:
                     return True
                 else:
                     logger.error(json.dumps(modify_match_target_response.json(), indent=4))
@@ -191,8 +190,7 @@ class wafFunctions:
         version_creation_response = wrapper_object.createWafConfigVersion(onboard_obj.onboard_waf_config_id,
                                                                           onboard_obj.onboard_waf_prev_version,
                                                                           notes)
-        if version_creation_response.status_code == 200 or \
-            version_creation_response.status_code == 201:
+        if version_creation_response.ok:
             onboard_obj.onboard_waf_config_version = version_creation_response.json()['version']
             logger.info(f"'{onboard_obj.waf_config_name}'{dot:>8}"
                         f'id: {onboard_obj.onboard_waf_config_id:<5}{dot:>15}'
@@ -206,7 +204,7 @@ class wafFunctions:
 
     def valid_hostnames(self, wrap_api, onboard_obj):
         resp = wrap_api.valid_hostnames_waf_config(onboard_obj)
-        if resp.status_code == 200:
+        if resp.ok:
             hostnames = []
             for dic in resp.json()['availableSet']:
                 for key in dic:
@@ -240,8 +238,7 @@ class wafFunctions:
             sys.exit()
 
         resp = wrap_api.create_waf_configurations(onboard_obj)
-        if resp.status_code == 200 or \
-            resp.status_code == 201:
+        if resp.ok:
             logger.info(f"'{onboard_obj.waf_config_name}'{dot:>8}"
                         f'id: {onboard_obj.onboard_waf_config_id:<5}{dot:>15}'
                         f'version: {onboard_obj.onboard_waf_config_version:<5}{dot:>5}'
@@ -255,8 +252,7 @@ class wafFunctions:
     def create_waf_policy(self, wrap_api, onboard_obj):
         resp = wrap_api.create_waf_policy(onboard_obj)
         logger.debug(json.dumps(resp.json(), indent=4))
-        if resp.status_code == 200 or \
-            resp.status_code == 201:
+        if resp.ok:
             onboard_obj.policy_id = resp.json()['policyId']
             onboard_obj.policy_name = resp.json()['policyName']
             extra = (len(onboard_obj.waf_config_name) - len(onboard_obj.policy_name)) + 8
@@ -270,8 +266,7 @@ class wafFunctions:
     def create_waf_match_target(self, wrap_api, onboard_obj, wag_target_hostnames: list | None = None):
         resp = wrap_api.create_waf_match_target(onboard_obj, wag_target_hostnames)
         logger.debug(json.dumps(resp.json(), indent=4))
-        if resp.status_code == 200 or \
-            resp.status_code == 201:
+        if resp.ok:
             onboard_obj.target_seq = resp.json()['sequence']
             onboard_obj.target_id = resp.json()['targetId']
             extra = (len(onboard_obj.waf_config_name) - len('sequence: 1')) + 10
@@ -315,8 +310,8 @@ class wafFunctions:
                                             onboard_object[i].onboard_waf_config_version,
                                             network='STAGING',
                                             emails=onboard_object[i].notification_emails,
-                                            note='Onboard CLI Activation')
-            if response.status_code in (200, 201):
+                                            note=onboard_object[i].version_notes)
+            if response.ok:
                 onboard_object[i].activation_id = response.json()['activationId']
                 onboard_object[i].activation_create = response.json()['createDate']
                 onboard_object[i].activation_status = response.json()['status']
@@ -364,7 +359,7 @@ class wafFunctions:
             while (not all_waf_configs_active):
                 for i, appsec in enumerate(appsec_onboard):
                     response = wrapper_api.pollWafActivationStatus(appsec_onboard[i].activation_id)
-                    if response.status_code == 200:
+                    if response.ok:
                         try:
                             if response.json()['status'] == 'ACTIVATED':
                                 appsec_onboard[i].activation_end = datetime.datetime.utcnow().isoformat().replace('+00:00', 'Z')
@@ -412,7 +407,7 @@ class wafFunctions:
         """
         match_target_response = wrapper_object.getMatchTarget(config_id, version, target_id)
         logger.debug(json.dumps(match_target_response.json(), indent=4))
-        if match_target_response.status_code == 200:
+        if match_target_response.ok:
             # Update the hostnames here
             updated_json_data = match_target_response.json()
 
@@ -424,7 +419,7 @@ class wafFunctions:
             modify_match_target_response = wrapper_object.modifyMatchTarget(config_id,
                                                                             version, target_id,
                                                                             json.dumps(updated_json_data))
-            if modify_match_target_response.status_code == 200:
+            if modify_match_target_response.ok:
                 return True
             else:
                 logger.error(json.dumps(modify_match_target_response.json(), indent=4))

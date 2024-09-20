@@ -52,7 +52,7 @@ class Onboard:
             self.activate_cloudlet_production = self.env_details[self.build_env]['activate_cloudlet_production']
 
             if click_args['email']:
-                self.notification_emails = click_args['email']
+                self.notification_emails = click_args['email'][0].split(',')
             else:
                 self.notification_emails = ['noreply@akamai.com']
 

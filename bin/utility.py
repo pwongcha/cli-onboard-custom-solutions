@@ -1813,12 +1813,10 @@ class utility:
         full_ruleset = self.get_full_behavior_by_jsonpath(ruletree, loc)
         logger.warning(f'Created new {len(onboard.paths)} rules')
         for rule in onboard.paths:
-            json_to_add = self.generate_custom_rule_json(cpcode[rule['rulename']], rule['path_match'], rule['rulename'])
+            json_to_add = self.generate_custom_rule_json(cpcode[rule['rulename']], rule['path_match'], rule['rulename'].lstrip(' '))
             full_ruleset['children'].append(json_to_add)
             logger.info(f"    rulename {rule['rulename']:<20} {rule['path_match']}")
-
-        full_ruleset = sorted(full_ruleset['children'], key=lambda x: x['name'])
-
+        full_ruleset = sorted(full_ruleset['children'], key=lambda x: x['name'].lstrip(' '))
         parts = re.split(r'\.|\[|\]', f'{loc}.children')
         # Filter out empty strings from results
         parts = [part for part in parts if part]
@@ -1836,7 +1834,6 @@ class utility:
                     current[part] = full_ruleset  # Set new value at the key
                 else:
                     current = current.get(part, {})  # Navigate to the next level, creating new dict if necessary
-
         return ruletree
 
     def get_full_behavior_by_jsonpath(self, json_object, json_path: str):

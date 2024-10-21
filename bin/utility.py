@@ -2019,7 +2019,7 @@ class Cloudlets:
         if not activation:
             logger.warning(f'SKIP - Activate Cloudlet on {network.upper()}')
         else:
-            cmd = f'akamai cloudlets -a {self.account_key} -s {self.section}'
+            cmd = self.build_cmd()
             cmd = f'{cmd} activate --policy {onboard.cloudlet_policy} --network staging --version {version}'
             command = cmd.split(' ')
             logger.debug(cmd)

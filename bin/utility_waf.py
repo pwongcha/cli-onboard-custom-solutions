@@ -201,6 +201,25 @@ class wafFunctions:
             logger.error(json.dumps(version_creation_response.json(), indent=4))
             logger.error(f'Unable to create a new version for WAF Configuration: {onboard_obj.waf_config_name}')
             return False
+        
+    def createWafVersionfordelete(self, wrapper_object, onboard_obj, notes: str):
+        """
+        Function to create new waf config version
+        """
+        version_creation_response = wrapper_object.createWafConfigVersion(onboard_obj.onboard_waf_config_id,
+                                                                          onboard_obj.onboard.waf_prod_version,
+                                                                          notes)
+        if version_creation_response.ok:
+            onboard_obj.onboard_waf_config_version = version_creation_response.json()['version']
+            logger.info(f"'{onboard_obj.waf_config_name}'{dot:>8}"
+                        f'id: {onboard_obj.onboard_waf_config_id:<5}{dot:>15}'
+                        f'new version: {onboard_obj.onboard_waf_config_version:<4}{dot:>2}'
+                        f'existing Security Configuration')
+            return True
+        else:
+            logger.error(json.dumps(version_creation_response.json(), indent=4))
+            logger.error(f'Unable to create a new version for WAF Configuration: {onboard_obj.waf_config_name}')
+            return False
 
     def valid_hostnames(self, wrap_api, onboard_obj):
         resp = wrap_api.valid_hostnames_waf_config(onboard_obj)
@@ -419,6 +438,36 @@ class wafFunctions:
             modify_match_target_response = wrapper_object.modifyMatchTarget(config_id,
                                                                             version, target_id,
                                                                             json.dumps(updated_json_data))
+            if modify_match_target_response.ok:
+                return True
+            else:
+                logger.error(json.dumps(modify_match_target_response.json(), indent=4))
+                return False
+        else:
+            logger.error(json.dumps(match_target_response.json(), indent=4))
+            return False
+
+    def removeMatchTargetPaths(self, wrapper_object, path_list, config_id, version, target_id):
+        # Fetch the current match target configuration
+        match_target_response = wrapper_object.getMatchTarget(config_id, version, target_id)
+        logger.debug(json.dumps(match_target_response.json(), indent=4))
+        if match_target_response.ok:
+            updated_json_data = match_target_response.json()
+
+            original_paths = set(updated_json_data.get('filePaths', []))
+            to_remove_paths = set(path_list)
+            remaining_paths = list(original_paths - to_remove_paths)
+
+            if len(remaining_paths) == len(original_paths):
+                logger.warning('No matching paths found in WAF match target to remove.')
+                return False
+
+            updated_json_data['filePaths'] = remaining_paths
+            logger.debug(f'Remaining paths after removal: {remaining_paths}')
+
+            # Update the match target
+            modify_match_target_response = wrapper_object.modifyMatchTarget(config_id, version, target_id, json.dumps(updated_json_data))
+
             if modify_match_target_response.ok:
                 return True
             else:

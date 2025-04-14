@@ -37,6 +37,7 @@ import utility
 import utility_papi
 import utility_waf
 import wrapper_api
+import copy
 from akamai.edgegrid import EdgeGridAuth
 from akamai.edgegrid import EdgeRc
 from exceptions import get_cli_root_directory
@@ -752,7 +753,8 @@ def batch_create(config, **kwargs):
 @click.option('--config-id', metavar='', help='name of security configuration to update', required=True)
 @click.option('--csv', metavar='', required=True, help='csv file with headers hostname,matchTargetId')
 @click.option('--version-notes', metavar='', help='notes for the new version', required=False)
-@click.option('--activate', metavar='', type=click.Choice(['staging', 'production']), multiple=True, help='Options: staging, production', required=False, default='')
+#@click.option('--activate', metavar='', type=click.Choice(['staging', 'production']), multiple=True, help='Options: staging, production', required=False, default='')
+@click.option('--activate', metavar='', type=click.Choice(['staging', 'production']), multiple=True, help='Options: staging, production', required=False, default=[])
 @click.option('--version', metavar='', help='version to add hostname(s) to', default='latest', required=False)
 @click.option('--email', metavar='', required=False, help='email for activation notifications')
 @pass_config
@@ -1132,6 +1134,237 @@ def custom(config, **kwargs):
     end_time = time.perf_counter()
     elapse_time = str(strftime('%H:%M:%S', gmtime(end_time - start_time)))
     logger.info(f'TOTAL DURATION: {elapse_time}, End Akamai CLI onboard')
+
+
+@cli.command(name='custom_delete', short_help='Custom delete command using account switch key')
+@click.option('--env', metavar='', required=True, help='Path to environment JSON file')
+@click.option('--csv', metavar='', required=True, help='Path to input CSV file')
+@click.option('--build-env', metavar='', required=True, default='dev', show_default=True)
+@click.option('--property-version', metavar='', default='prod', show_default=True)
+@click.option('--email', metavar='', multiple=True, help='email(s) for activation notifications')
+@click.option('--dryrun', is_flag=True, default=False, help='validate only', show_default=True)
+@click.option('--note', metavar='', default='Delete paths CLI', help='property version note', show_default=True)
+@pass_config
+def custom_delete(config, **kwargs):
+    """
+    Delete entries from delivery config + cloudlet policy + WAF
+    """
+    logger.info('Start Akamai CLI delete process')
+    print('Start Akamai CLI delete process')
+    _, wrapper = init_config(config)
+    start_time = time.perf_counter()
+
+    # Verify required Akamai CLI components
+    util = utility.utility()
+    if not all([
+        util.installedCommandCheck('akamai'),
+        util.executeCommand(['akamai', 'pipeline']),
+        util.executeCommand(['akamai', 'cloudlets'])
+    ]):
+        sys.exit()
+
+    # Load onboarding config and parse CSV
+    onboard = onboard_custom.Onboard(config, kwargs, util)
+
+    result = util.validateCustomSteps(onboard, wrapper)
+    logger.debug(f"✅ validateCustomSteps returned: {result}")
+    print(f"✅ validateCustomSteps returned: {result}")
+    print(f"validateCustomSteps returned: {result}")
+
+    if result:
+        util_papi = utility_papi.papiFunctions()
+
+        # Load rule tree
+        property_rule_tree = util_papi.custom_property_version(onboard, wrapper, util)
+
+        # Load rules to delete
+        paths_to_delete = set(path['path_match'].strip() for path in onboard.paths)
+        rulenames_to_delete = set(path['rulename'].strip() for path in onboard.paths)
+
+        logger.info(f'Looking to delete rules for {len(paths_to_delete)} paths and {len(rulenames_to_delete)} rulenames.')
+        print(f'Looking to delete rules for {len(paths_to_delete)} paths and {len(rulenames_to_delete)} rulenames.')
+        logger.debug(f"Paths to delete (WAF + Cloudlet): {paths_to_delete}")
+        print(f"Paths to delete (WAF + Cloudlet): {paths_to_delete}")
+        logger.debug(f"Rule names to delete (PM): {rulenames_to_delete}")
+        print(f"Rule names to delete (PM): {rulenames_to_delete}")
+
+        rules_modified = False
+
+        def walk_and_remove(rule_node):
+            nonlocal rules_modified
+            if 'children' in rule_node:
+                updated_children = []
+                for child in rule_node['children']:
+                    logger.debug(f"Walking rule: {child['name']}")
+                    print(f"Walking rule: {child['name']}")
+
+                    if child['name'].strip() in rulenames_to_delete:
+                        logger.debug(f"Evaluating rule for removal: {child['name']}")
+                        print(f"Evaluating rule for removal: {child['name']}")
+                        if any(
+                            crit.get('name') == 'path' and (
+                                crit.get('options', {}).get('value') in paths_to_delete or
+                                any(val in paths_to_delete for val in crit.get('options', {}).get('values', []))
+                            )
+                            for crit in child.get('criteria', [])
+                        ):
+                            logger.warning(f"Removing rule: {child['name']}")
+                            print(f"Removing rule: {child['name']}")
+                            rules_modified = True
+                            continue  # Skip this rule — delete it
+
+                    walk_and_remove(child)
+                    updated_children.append(child)
+                rule_node['children'] = updated_children
+
+        # Start recursion from root
+        walk_and_remove(property_rule_tree['rules'])
+
+        if not rules_modified:
+            logger.warning('No matching rules found to remove.')
+            print('No matching rules found to remove.')
+            sys.exit(0)
+
+        # Update property rule tree and push changes
+        onboard.updated_property_rule_tree = property_rule_tree['rules']
+        util_papi.update_custom_property(onboard, wrapper, property_rule_tree['ruleFormat'])
+
+        # --- WAF Updates ---
+        logger.warning('Updating WAF - removing match targets')
+        print('Updating WAF - removing match targets')
+        util_waf = utility_waf.wafFunctions()
+
+        if not util_waf.createWafVersion(wrapper, onboard, notes=onboard.version_notes):
+            logger.error('Failed to create WAF version')
+            print('Failed to create WAF version')
+            sys.exit()
+
+        wrapper.update_waf_config_version_note(onboard, notes=onboard.version_notes)
+
+        waf_paths = list(map(lambda x: x['path_match'].strip(), onboard.paths))
+        logger.debug(f"Paths sent to removeMatchTargetPaths(): {waf_paths}")
+        print(f"Paths sent to removeMatchTargetPaths(): {waf_paths}")
+        logger.debug(f"WAF Config ID: {onboard.onboard_waf_config_id}, Version: {onboard.onboard_waf_config_version}, Target ID: {onboard.waf_match_target_id}")
+        print(f"WAF Config ID: {onboard.onboard_waf_config_id}, Version: {onboard.onboard_waf_config_version}, Target ID: {onboard.waf_match_target_id}")
+
+        remove_result = util_waf.removeMatchTargetPaths(
+            wrapper,
+            waf_paths,
+            onboard.onboard_waf_config_id,
+            onboard.onboard_waf_config_version,
+            onboard.waf_match_target_id
+        )
+
+        if remove_result:
+            logger.info('Successfully removed match targets from WAF')
+            print('Successfully removed match targets from WAF')
+        else:
+            logger.error('Unable to update match target in WAF Configuration')
+            print('Unable to update match target in WAF Configuration')
+
+        if onboard.activate_waf_staging:
+            util_waf.activateAndPoll(wrapper, onboard, network='STAGING')
+        else:
+            logger.warning('SKIP - Activate WAF config on STAGING')
+            print('SKIP - Activate WAF config on STAGING')
+
+        if onboard.activate_property_production:
+            util_waf.activateAndPoll(wrapper, onboard, network='PRODUCTION')
+        else:
+            logger.warning('SKIP - Activate WAF config on PRODUCTION')
+            print('SKIP - Activate WAF config on PRODUCTION')
+
+
+        # --- Cloudlet Policy Updates ---
+        logger.warning('Updating Cloudlet Policy - removing path matches')
+        print('Updating Cloudlet Policy - removing path matches')
+        uc = utility.Cloudlets(config)
+        print("🖨️ Instantiated Cloudlets class")
+        uc.retrieve_matchrules(onboard.cloudlet_policy)
+        cloudlet_rules = load_json('policy_matchrules.json')
+        print("🖨️ cloudlet_rules")
+        print(json.dumps(cloudlet_rules, indent=2))
+
+        if not cloudlet_rules:
+            logger.error("❌ Failed to load cloudlet_rules from policy_matchrules.json")
+            print("❌ Failed to load cloudlet_rules from policy_matchrules.json")
+            return
+
+        logger.debug("🦪 Scanning cloudlet_rules for 'Property'")
+        print("🦪 Scanning cloudlet_rules for 'Property'")
+        logger.debug(json.dumps(cloudlet_rules, indent=2))
+        print("🖨️ Entered Cloudlet scanning block")
+
+        for rule in cloudlet_rules.get('matchRules', []):
+            logger.debug(f"Found rule name: {rule.get('name')}")
+            print(f"🖨️ Found rule: {rule.get('name')}")
+            if rule['name'].strip().lower() == 'property':
+                path_matches_to_remove = set(map(lambda x: x['path_match'].strip(), onboard.paths))
+                logger.debug(f"Calling remove_phasedrelease_paths with paths: {path_matches_to_remove}")
+                print(f"Calling remove_phasedrelease_paths with paths: {path_matches_to_remove}")
+
+                matches = rule.get('matches', [])
+                new_matches = []
+                removed_any = False
+
+                for match in matches:
+                    if match.get('matchType') == 'path':
+                        values = match.get('matchValue', '').split()
+                        kept_values = [v for v in values if v.strip() not in path_matches_to_remove]
+                        if len(kept_values) != len(values):
+                            removed_any = True
+                            logger.warning(f"Removing path(s): {set(values) - set(kept_values)}")
+                            print(f"Removing path(s): {set(values) - set(kept_values)}")
+                        if kept_values:
+                            match['matchValue'] = ' '.join(kept_values)
+                            new_matches.append(match)
+                    else:
+                        new_matches.append(match)
+
+                updated = removed_any
+                rule['matches'] = new_matches
+
+                # Construct the updated ruleset in correct format
+                updated_rules = {
+                    "matchRuleFormat": "1.0",
+                    "matchRules": cloudlet_rules.get("matchRules", [])
+                }
+
+                print("🛠️ matchRules type:", type(updated_rules.get("matchRules")))
+                logger.debug(f"Value of 'updated' after removal attempt: {updated}")
+                print(f"🖨️ Updated flag: {updated}")
+                logger.debug(json.dumps(updated_rules, indent=2))
+                print(json.dumps(updated_rules, indent=2))
+
+                if updated:
+                    for path in path_matches_to_remove:
+                        logger.info(f"Removed Cloudlet path: {path}")
+                        print(f"Removed Cloudlet path: {path}")
+                    logger.warning('Updating Cloudlet Policy')
+                    print('Updating Cloudlet Policy')
+                    version_number = uc.create_cloudlet_policy_version(
+                        onboard.cloudlet_policy,
+                        updated_rules["matchRules"],
+                        onboard.version_notes
+                    )
+                    uc.activate_policy(onboard, version_number, network='STAGING')
+                    uc.activate_policy(onboard, version_number, network='PRODUCTION')
+                else:
+                    logger.warning('No cloudlet paths removed or no update needed')
+                    print('No cloudlet paths removed or no update needed')
+                break
+        else:
+            logger.warning('Rule "Property" not found in Cloudlet Policy')
+            print('Rule "Property" not found in Cloudlet Policy')
+
+
+
+
+    end_time = time.perf_counter()
+    elapse_time = str(strftime('%H:%M:%S', gmtime(end_time - start_time)))
+    logger.info(f'TOTAL DURATION: {elapse_time}, End Akamai CLI delete process')
+    print(f'TOTAL DURATION: {elapse_time}, End Akamai CLI delete process')
+
 
 
 def get_prog_name():

@@ -578,6 +578,44 @@ akamai onboard -s default custom --env environments.json --csv batch-create.csv 
     --property-version staging --use-cpcode 111111 --dryrun
 ```
 
+
+# custom_delete
+
+Remove path matches from delivery config + cloudlet policy + waf for curated rules in PM
+
+```bash
+Options:
+  --env                environment JSON file  [required]
+  --csv                csv file with headers "path,propertyName"  [required]
+  --build-env          environment to build  [default: dev; required]
+  --property-version   property version to build from network.  options: prod,
+                       staging, latest, or numeric value  [default: prod]
+
+  --email              email(s) for activation notifications
+
+  --dryrun             validate only  [default: False]
+
+```
+
+```mermaid
+flowchart LR
+    A[fill environment detail into JSON file] --> B[populate paths into CSV file]
+    B-->C[run akamai onboard custom_delete]
+```
+
+### Usage
+
+- Sample csv and json file are in templates/sample_custom folder
+
+```bash
+
+akamai onboard -s default custom_delete --env environments.json --csv batch-delete.csv --build-env prod
+
+akamai onboard -s default custom_delete --env environments.json --csv batch-delete.csv --build-env dev \
+    --property-version staging --dryrun
+
+```
+
 ## Local Contribution
 
 - Minimum python 3.6 `git clone https://github.com/pwongcha/cli-onboard-custom-solutions.git cli-onboard`

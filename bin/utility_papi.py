@@ -526,3 +526,36 @@ class papiFunctions:
             sys.exit(logger.error(json.dumps(update_resp.json(), indent=4)))
 
         return onboard.updated_property_version
+    
+
+    def remove_rules_from_property_tree(rule_node: dict, rulenames_to_delete: set, paths_to_delete: set) -> bool:
+        """
+        Recursively removes rules from property rule tree if rule name matches and path criteria is met.
+        Returns True if any rule was removed, False otherwise.
+        """
+        rules_modified = False
+
+        def _walk_and_remove(node):
+            nonlocal rules_modified
+            if 'children' in node:
+                updated_children = []
+                for child in node['children']:
+                    logger.debug(f"Walking rule: {child['name']}")
+                    if child['name'].strip() in rulenames_to_delete:
+                        logger.debug(f"Evaluating rule for removal: {child['name']}")
+                        if any(
+                            crit.get('name') == 'path' and (
+                                crit.get('options', {}).get('value') in paths_to_delete or
+                                any(val in paths_to_delete for val in crit.get('options', {}).get('values', []))
+                            )
+                            for crit in child.get('criteria', [])
+                        ):
+                            logger.warning(f"Removing rule: {child['name']}")
+                            rules_modified = True
+                            continue  # Skip this child
+                    _walk_and_remove(child)
+                    updated_children.append(child)
+                node['children'] = updated_children
+
+        _walk_and_remove(rule_node)
+        return rules_modified

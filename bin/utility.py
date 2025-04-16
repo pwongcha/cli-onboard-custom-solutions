@@ -1994,6 +1994,9 @@ class Cloudlets:
         cmd = f'{cmd} update --policy {policy} --file policy_matchrules_updated.json --notes'
         command = cmd.split(' ')
         command.append(notes)  # notes can have space inside
+        full_command_str = ' '.join(command)
+        #print(f"🛠️ Executing Cloudlet command: {full_command_str}")
+        #logger.debug(f"Executing Cloudlet command: {full_command_str}")
         update_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         stdout, stderr = update_cloudlet_cli.communicate()
         version_number = 0
@@ -2032,7 +2035,7 @@ class Cloudlets:
                                   rulename: str,
                                   new_value: str,
                                   matchon_type: str | None = None):
-
+        print("🚨 Entered update_phasedrelease_rule()")
         original_property = []
         update = False
         index = 0
@@ -2050,14 +2053,14 @@ class Cloudlets:
                 continue
             origin = rule['forwardSettings']['originId']
             percent = rule['forwardSettings']['percent']
-
+            print("🚨 Entered update_phasedrelease_rule()....1")
             for j, element in enumerate(matches, start=1):
                 match_value = element['matchValue']
                 match_operator = element['matchOperator']
                 match_type = element['matchType']
                 negative_match = element['negate']
                 xs = match_value.split(' ')
-
+                print("🚨 Entered update_phasedrelease_rule()..2")
                 str_count = len(match_value)
                 elements = len(xs)
                 msg = f'{name:<15} {i:>3}.{j}   {match_type:<8} {str(negative_match):<10}'
@@ -2093,7 +2096,6 @@ class Cloudlets:
                             original_property.append(ex)
                             j = j + 1
                             logger.info(f'New    criteria {i:>3}.{j} {match_operator:<10} {len(chunk)}')
-
         if update:
             msg = f"{len(before_match_rules[index - 1]['matches'])}/{len(original_property)}"
             logger.warning(f'Number of condition for rule {rulename} before/after: {msg}')
@@ -2107,3 +2109,44 @@ class Cloudlets:
                 logger.info(f'{i:<3} {str_count:<10} {elements:<5}')
 
         return update, match_rules
+    
+    def remove_phasedrelease_paths(cloudlet_rules: dict, onboard) -> tuple[bool, dict]:
+        """
+        Remove path match entries from a Cloudlet rule named 'Property'.
+        Returns a tuple (updated_flag, updated_rules_dict).
+        """
+        path_matches_to_remove = set(map(lambda x: x['path_match'].strip(), onboard.paths))
+        logger.debug(f"Calling remove_phasedrelease_paths with paths: {path_matches_to_remove}")
+
+        for rule in cloudlet_rules.get('matchRules', []):
+            if rule['name'].strip().lower() == 'property':
+                matches = rule.get('matches', [])
+                new_matches = []
+                removed_any = False
+
+                for match in matches:
+                    if match.get('matchType') == 'path':
+                        values = match.get('matchValue', '').split()
+                        kept_values = [v for v in values if v.strip() not in path_matches_to_remove]
+                        if len(kept_values) != len(values):
+                            removed_any = True
+                            logger.warning(f"Removing path(s): {set(values) - set(kept_values)}")
+                        if kept_values:
+                            match['matchValue'] = ' '.join(kept_values)
+                            new_matches.append(match)
+                    else:
+                        new_matches.append(match)
+
+                rule['matches'] = new_matches
+                updated_rules = {
+                    "matchRuleFormat": "1.0",
+                    "matchRules": cloudlet_rules.get("matchRules", [])
+                }
+
+                logger.debug(f"Value of 'updated' after removal attempt: {removed_any}")
+                logger.debug(json.dumps(updated_rules, indent=2))
+                return removed_any, updated_rules
+
+        logger.warning('Rule "Property" not found in Cloudlet Policy')
+        return False, {}
+

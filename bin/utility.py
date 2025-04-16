@@ -2110,7 +2110,7 @@ class Cloudlets:
 
         return update, match_rules
     
-    def remove_phasedrelease_paths(cloudlet_rules: dict, onboard) -> tuple[bool, dict]:
+    def remove_phasedrelease_paths(self,cloudlet_rules: dict, onboard) -> tuple[bool, dict]:
         """
         Remove path match entries from a Cloudlet rule named 'Property'.
         Returns a tuple (updated_flag, updated_rules_dict).

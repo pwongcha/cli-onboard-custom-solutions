@@ -525,10 +525,9 @@ class papiFunctions:
             logger.error('Unable to update rules for property')
             sys.exit(logger.error(json.dumps(update_resp.json(), indent=4)))
 
-        return onboard.updated_property_version
-    
+        return onboard.updated_property_version  
 
-    def remove_rules_from_property_tree(rule_node: dict, rulenames_to_delete: set, paths_to_delete: set) -> bool:
+    def remove_rules_from_property_tree(self, rule_node: dict, rulenames_to_delete: set, paths_to_delete: set) -> bool:
         """
         Recursively removes rules from property rule tree if rule name matches and path criteria is met.
         Returns True if any rule was removed, False otherwise.

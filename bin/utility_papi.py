@@ -549,7 +549,7 @@ class papiFunctions:
                             )
                             for crit in child.get('criteria', [])
                         ):
-                            logger.warning(f"Removing rule: {child['name']}")
+                            #logger.warning(f"Removing rule: {child['name']}")
                             rules_modified = True
                             continue  # Skip this child
                     _walk_and_remove(child)

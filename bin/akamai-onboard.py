@@ -1174,31 +1174,69 @@ def custom_delete(config, **kwargs):
         paths_to_delete = set(path['path_match'].strip() for path in onboard.paths)
         rulenames_to_delete = set(path['rulename'].strip() for path in onboard.paths)
 
+        
+
         logger.info(f'Looking to delete rules for {len(paths_to_delete)} paths and {len(rulenames_to_delete)} rulenames.')
-        logger.debug(f"Paths to delete (WAF + Cloudlet): {paths_to_delete}")
-        logger.debug(f"Rule names to delete (PM): {rulenames_to_delete}")
+        logger.info(f"Paths to delete (WAF + Cloudlet): {paths_to_delete}")
+        logger.info(f"Rule names to removed from Property Manager: {rulenames_to_delete}")
 
         
         rules_modified = util_papi.remove_rules_from_property_tree(property_rule_tree['rules'], rulenames_to_delete, paths_to_delete)
 
         if not rules_modified:
             logger.warning('No matching rules found to remove.')
-            sys.exit(0)
+            sys.exit(0)    
 
+        #Handle Property Manager
+        print('\n\n')
+        logger.warning('Updating Property Manager')
+        logger.info(f"Rule deletion from PM in Progress: {rulenames_to_delete}")
         onboard.updated_property_rule_tree = property_rule_tree['rules']
         util_papi.update_custom_property(onboard, wrapper, property_rule_tree['ruleFormat'])
+        logger.info(f'New property version: v{onboard.updated_property_version} is based on v{onboard.property_version_base}')
 
+        print()
+        property = [{'propertyName': onboard.property_name, 'propertyId': property_rule_tree['propertyId']}]
+
+        if not onboard.activate_property_staging:
+            staging_act_id = 0
+            logger.warning('SKIP - Activate delivery configuration on STAGING')
+        else:
+            _, _, fail, act = util_papi.batch_activate_and_poll(wrapper,
+                                                            property,
+                                                            onboard.contract_id,
+                                                            onboard.group_id,
+                                                            version=onboard.updated_property_version,
+                                                            network='STAGING',
+                                                            emailList=onboard.notification_emails,
+                                                            notes=onboard.property_version_note)
+            staging_act_id = act[0]['activationId'] if len(fail) == 0 else fail[0]['activationId']
+
+        if not onboard.activate_property_production:
+            prod_act_id = 0
+            logger.warning('SKIP - Activate delivery configuration on PRODUCTION')
+        else:
+            _, _, fail, act = util_papi.batch_activate_and_poll(wrapper,
+                                                                property,
+                                                                onboard.contract_id,
+                                                                onboard.group_id,
+                                                                version=onboard.updated_property_version,
+                                                                network='PRODUCTION',
+                                                                emailList=onboard.notification_emails,
+                                                                notes=onboard.property_version_note)
+            prod_act_id = act[0]['activationId'] if len(fail) == 0 else fail[0]['activationId']
+
+        
+        #Handle Security Config
+        print('\n\n')
         logger.warning('Updating WAF - removing match targets')
         util_waf = utility_waf.wafFunctions()
-        if not util_waf.createWafVersion(wrapper, onboard, notes=onboard.version_notes):
+        if not util_waf.createWafVersionfordelete(wrapper, onboard, notes=onboard.version_notes):
             logger.error('Failed to create WAF version')
             sys.exit()
-
         wrapper.update_waf_config_version_note(onboard, notes=onboard.version_notes)
         waf_paths = list(map(lambda x: x['path_match'].strip(), onboard.paths))
-        logger.debug(f"Paths sent to removeMatchTargetPaths(): {waf_paths}")
-        logger.debug(f"WAF Config ID: {onboard.onboard_waf_config_id}, Version: {onboard.onboard_waf_config_version}, Target ID: {onboard.waf_match_target_id}")
-
+        logger.info(f"Paths sent to removeMatchTargetPaths(): {waf_paths}")
         remove_result = util_waf.removeMatchTargetPaths(wrapper, waf_paths, onboard.onboard_waf_config_id, onboard.onboard_waf_config_version, onboard.waf_match_target_id)
         if remove_result:
             logger.info('Successfully removed match targets from WAF')
@@ -1215,6 +1253,8 @@ def custom_delete(config, **kwargs):
         else:
             logger.warning('SKIP - Activate WAF config on PRODUCTION')
 
+        #Handle Cloudlet Config
+        print('\n\n')
         logger.warning('Updating Cloudlet Policy - removing path matches')
         uc = utility.Cloudlets(config)
         uc.retrieve_matchrules(onboard.cloudlet_policy)
@@ -1223,16 +1263,17 @@ def custom_delete(config, **kwargs):
         if not cloudlet_rules:
             logger.error("❌ Failed to load cloudlet_rules from policy_matchrules.json")
             return
-
+        
         logger.debug("🦪 Scanning cloudlet_rules for 'Property'")
-        logger.debug(json.dumps(cloudlet_rules, indent=2))
+        logger.debug(json.dumps(cloudlet_rules, indent=2))    
 
-        #updated, updated_rules = uc.remove_phasedrelease_paths(cloudlet_rules, onboard)
         updated, updated_rules = uc.remove_phasedrelease_paths(cloudlet_rules, onboard)
         if updated:
             for path in set(map(lambda x: x['path_match'].strip(), onboard.paths)):
                 logger.info(f"Removed Cloudlet path: {path}")
-            logger.warning('Updating Cloudlet Policy')
+            logger.debug('Updating Cloudlet Policy after path removal')
+            
+            logger.info(f"Removed Cloudlet path: {path}")
             version_number = uc.create_cloudlet_policy_version(
                 onboard.cloudlet_policy,
                 updated_rules["matchRules"],

@@ -2130,7 +2130,7 @@ class Cloudlets:
                         kept_values = [v for v in values if v.strip() not in path_matches_to_remove]
                         if len(kept_values) != len(values):
                             removed_any = True
-                            logger.warning(f"Removing path(s): {set(values) - set(kept_values)}")
+                            #logger.warning(f"Removing path(s): {set(values) - set(kept_values)}")
                         if kept_values:
                             match['matchValue'] = ' '.join(kept_values)
                             new_matches.append(match)

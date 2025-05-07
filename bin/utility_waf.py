@@ -206,14 +206,22 @@ class wafFunctions:
         """
         Function to create new waf config version
         """
+        waf_version_to_use = onboard_obj.onboard_waf_prev_version
+        if onboard_obj.property_version.lower() == "staging":
+            waf_version_to_use = onboard_obj.waf_stage_version
+        elif onboard_obj.property_version.lower() == "prod":
+            waf_version_to_use = onboard_obj.waf_prod_version        
+        else:
+            waf_version_to_use = onboard_obj.onboard_waf_prev_version  # latest version   
         version_creation_response = wrapper_object.createWafConfigVersion(onboard_obj.onboard_waf_config_id,
-                                                                          onboard_obj.onboard.waf_prod_version,
-                                                                          notes)
+                                                                          waf_version_to_use,
+                                                                          notes)       
         if version_creation_response.ok:
             onboard_obj.onboard_waf_config_version = version_creation_response.json()['version']
             logger.info(f"'{onboard_obj.waf_config_name}'{dot:>8}"
                         f'id: {onboard_obj.onboard_waf_config_id:<5}{dot:>15}'
                         f'new version: {onboard_obj.onboard_waf_config_version:<4}{dot:>2}'
+                        f'base version: {waf_version_to_use:<4}{dot:>2}'
                         f'existing Security Configuration')
             return True
         else:

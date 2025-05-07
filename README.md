@@ -600,7 +600,7 @@ Options:
 ```mermaid
 flowchart LR
     A[fill environment detail into JSON file] --> B[populate paths into CSV file]
-    B-->C[run akamai onboard custom_delete]
+    B-->C[run akamai onboard custom_delete to delete he entries for curated setup]
 ```
 
 ### Usage

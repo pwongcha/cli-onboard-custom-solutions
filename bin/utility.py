@@ -2030,6 +2030,29 @@ class Cloudlets:
             stdout, stderr = act_cloudlet_cli.communicate()
             print(stdout.decode('utf-8'))
 
+    def activate_policy_for_customdelete(self, onboard, version: int, network: str):
+        activation = False
+        if network == 'STAGING':
+            activation = onboard.activate_cloudlet_staging
+        if network == 'PRODUCTION':
+            activation = onboard.activate_cloudlet_production
+
+        if not activation:
+            logger.warning(f'SKIP - Activate Cloudlet on {network.upper()}')
+        else:
+            cmd = self.build_cmd()
+            if network == 'STAGING':
+                cmd = f'{cmd} activate --policy {onboard.cloudlet_policy} --network staging --version {version}'
+            if network == 'PRODUCTION':
+                cmd = f'{cmd} activate --policy {onboard.cloudlet_policy} --network production --version {version}'
+            command = cmd.split(' ')
+            logger.debug(cmd)
+            act_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            stdout, stderr = act_cloudlet_cli.communicate()
+            print(stdout.decode('utf-8'))
+            logger.warning(f'Successfully activated Cloudlet configuration to Akamai {network} network')  
+
+
     def update_phasedrelease_rule(self,
                                   rules: dict,
                                   rulename: str,

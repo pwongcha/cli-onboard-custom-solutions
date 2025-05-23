@@ -2041,10 +2041,7 @@ class Cloudlets:
             logger.warning(f'SKIP - Activate Cloudlet on {network.upper()}')
         else:
             cmd = self.build_cmd()
-            if network == 'STAGING':
-                cmd = f'{cmd} activate --policy {onboard.cloudlet_policy} --network staging --version {version}'
-            if network == 'PRODUCTION':
-                cmd = f'{cmd} activate --policy {onboard.cloudlet_policy} --network production --version {version}'
+            cmd = f'{cmd} activate --policy {onboard.cloudlet_policy} --network  {network.lower()} --version {version}'
             command = cmd.split(' ')
             logger.debug(cmd)
             act_cloudlet_cli = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

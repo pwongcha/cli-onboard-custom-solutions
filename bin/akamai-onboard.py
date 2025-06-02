@@ -1259,7 +1259,7 @@ def custom_delete(config, **kwargs):
         uc = utility.Cloudlets(config)
         uc.retrieve_matchrules(onboard.cloudlet_policy)
         cloudlet_rules = load_json('policy_matchrules.json')
-
+        #logger.info(f'cloudlet_rules: {cloudlet_rules}')
         if not cloudlet_rules:
             logger.error("❌ Failed to load cloudlet_rules from policy_matchrules.json")
             return
@@ -1279,10 +1279,20 @@ def custom_delete(config, **kwargs):
                 updated_rules["matchRules"],
                 onboard.version_notes
             )
-            uc.activate_policy(onboard, version_number, network='STAGING')
-            uc.activate_policy(onboard, version_number, network='PRODUCTION')
+            #uc.activate_policy_for_customdelete(onboard, version_number, network='STAGING')
+            #uc.activate_policy_for_customdelete(onboard, version_number, network='PRODUCTION')
+
+            if onboard.activate_cloudlet_staging:
+                uc.activate_policy_for_customdelete(onboard, version_number, network='STAGING')
+            else:
+                logger.warning('SKIP - Activate cloudlet config on STAGING')
+
+            if onboard.activate_cloudlet_production:
+                uc.activate_policy_for_customdelete(onboard, version_number, network='PRODUCTION')
+            else:
+                logger.warning('SKIP - Activate cloudlet config on PRODUCTION')
         else:
-            logger.warning('No cloudlet paths removed or no update needed')
+            logger.warning('No cloudlet paths removed or no update needed')   
 
     end_time = time.perf_counter()
     elapse_time = str(strftime('%H:%M:%S', gmtime(end_time - start_time)))

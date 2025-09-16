@@ -2235,13 +2235,15 @@ class Cloudlets:
             [p.strip() for p in update_to_paths]
         ))
         logger.debug(f"Calling replace_phasedrelease_paths with map: {replace_map}")
+        did_replace = False          # <-- ensure defined for all code paths
+        updated_rules = None         # <-- sentinel to know if we found 'Property'
 
         # 2) Locate the 'Property' rule
         for rule in cloudlet_rules.get('matchRules', []):
             if rule.get('name', '').strip().lower() == 'property':
                 matches = rule.get('matches', [])
                 new_matches = []
-                did_replace = False
+                #did_replace = False
 
                 # 3) Iterate and replace path values
                 for match in matches:
@@ -2267,11 +2269,18 @@ class Cloudlets:
                     "matchRuleFormat": "1.0",
                     "matchRules": cloudlet_rules.get('matchRules', [])
                 }
+                break  # done; we found and processed the Property rule
+                
+            #logger.debug(f"Replacements applied? {did_replace}")
+            #logger.debug(json.dumps(updated_rules, indent=2))
+            #return did_replace, updated_rules
 
+        # Log/return only if we actually touched the Property rule
+        if updated_rules is not None:
             logger.debug(f"Replacements applied? {did_replace}")
             logger.debug(json.dumps(updated_rules, indent=2))
             return did_replace, updated_rules
-
+        
         logger.warning('Rule "Property" not found in Cloudlet Policy')
         return False, {}
 

@@ -1448,7 +1448,7 @@ def custom_update(config, **kwargs):
             for path in set(map(lambda x: x['path_match'].strip(), onboard.paths)):
                 logger.info(f"Replaced Cloudlet path: {path}")
             logger.debug('Updating Cloudlet Policy after path removal')
-            
+
             version_number = uc.create_cloudlet_policy_version(
                 onboard.cloudlet_policy,
                 replaced_rules["matchRules"],
@@ -1471,7 +1471,7 @@ def custom_update(config, **kwargs):
 
     end_time = time.perf_counter()
     elapse_time = str(strftime('%H:%M:%S', gmtime(end_time - start_time)))
-    logger.info(f'TOTAL DURATION: {elapse_time}, End Akamai CLI delete process')
+    logger.info(f'TOTAL DURATION: {elapse_time}, End Akamai CLI update process')
 
 
 def get_prog_name():

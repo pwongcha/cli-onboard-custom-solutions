@@ -1169,6 +1169,13 @@ def custom_delete(config, **kwargs):
     result = util.validateCustomSteps(onboard, wrapper)
     logger.debug(f"✅ validateCustomSteps returned: {result}")
 
+    # validation cloudlet policy exists
+    uc = utility.Cloudlets(config)
+    if not uc.validate_cloudlet_policy(onboard.cloudlet_policy):
+        print()
+        sys.exit(logger.error('please review all errors and rerun'))
+
+
     if result:
         util_papi = utility_papi.papiFunctions()
         property_rule_tree = util_papi.custom_property_version(onboard, wrapper, util)
@@ -1190,7 +1197,11 @@ def custom_delete(config, **kwargs):
 
         if not rules_modified:
             logger.warning('No matching rules found to remove.')
-            sys.exit(0)    
+            sys.exit(0)  
+
+        # continue if --dryrun is False
+        if kwargs['dryrun']:
+            sys.exit()  
 
         #Handle Property Manager
         print('\n\n')
@@ -1314,7 +1325,7 @@ def custom_delete(config, **kwargs):
 @pass_config
 def custom_update(config, **kwargs):
     """
-    Delete entries from delivery config + cloudlet policy + WAF
+    Update entries from delivery config + cloudlet policy + WAF
     """
     logger.info('Start Akamai CLI update process')
     _, wrapper = init_config(config)
@@ -1336,9 +1347,16 @@ def custom_update(config, **kwargs):
     result = util.validateCustomSteps(onboard, wrapper)
     logger.debug(f"✅ validateCustomSteps returned: {result}")
 
+    # validation cloudlet policy exists
+    uc = utility.Cloudlets(config)
+    if not uc.validate_cloudlet_policy(onboard.cloudlet_policy):
+        print()
+        sys.exit(logger.error('please review all errors and rerun'))
+
+
     if result:
         util_papi = utility_papi.papiFunctions()
-        logger.info(f"into util_papi: {util_papi}")
+        #logger.info(f"into util_papi: {util_papi}")
         property_rule_tree = util_papi.custom_property_version(onboard, wrapper, util)
         update_from_paths   = { p['path_match']      for p in onboard.paths_update}
         update_to_paths     = { p['path_update_to']  for p in onboard.paths_update }
@@ -1346,12 +1364,17 @@ def custom_update(config, **kwargs):
         # and derive your rule-names from the paths:
         rulenames_to_update = {r['rulename'] for r in onboard.paths_update if r.get('rulename')}      
         logger.info(f"Rule update from PM in Progress: {rulenames_to_update}")
-        logger.info(f"PM + WAF + Cloudlet: Paths will be updated from: {update_from_paths} tp {update_to_paths}")
+        logger.info(f"PM + WAF + Cloudlet: Paths will be updated from: {update_from_paths} to {update_to_paths}")
         rules_modified = util_papi.update_rules_from_property_tree(property_rule_tree['rules'], rulenames_to_update, update_from_paths,update_to_paths)
 
         if not rules_modified:
             logger.warning('No matching rules found to remove.')
-            sys.exit(0)    
+            sys.exit(0)  
+
+
+        # continue if --dryrun is False
+        if kwargs['dryrun']:
+            sys.exit()  
 
         #Handle Property Manager
         print('\n\n')
